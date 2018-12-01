@@ -7,6 +7,8 @@
 * for low pass filter and receiver filter selection.
 *
 * k theis <theis.kurt@gmail.com> 11/2018
+* V2 - has 16x2 LCD, mode/menu button, line for relay cx for usb/lsb on rx
+* added voltage and mode to display
 *
 * This is a controller for a tayloe type receiver (SDR)
 * and cw transmitter that covers 3.0 MHz thru 30.0 MHz
@@ -114,7 +116,7 @@ float MULTI = 28.0;  // multiplier (* XTAL) for PLL (used in transmit pll only)
 float XTAL = 25.0;   // Crystal frequency of PLL clock (MHz)
 unsigned int SIDETONE = 700;    // sidetone frequency for tone out and CW offset
 int MODE = 0;
-char mode[4][6] = {"LSB","USB","CW-L","CW-U"};
+const char mode[4][6] = {"LSB","USB","CW-L","CW-U"};
 
 
 /* set up hardware ports etc */ 
@@ -203,7 +205,18 @@ void updateFreq() {  // this is called from inside an interrupt - delays, I2C di
 }
 
 
- 
+/* show mode on lcd display */
+void updateMode() {
+  extern int MODE;
+  
+  lcd1.setCursor(0,1);    // row 1 pos 0
+  lcd1.print(mode[MODE]);
+  return;
+}
+
+
+
+
  
 /**** Save vfo frequency to EEPROM ****/
 void Save() {
@@ -697,21 +710,26 @@ void loop() {
      if (digitalRead(modesw) == 1) {    // short press - MODE function
         MODE += 1;
         if (MODE == 4) MODE = 0;      // cycle thru
-        // update LCD 
-        // switch usb/lsb relay
+          updateMode();   // update LCD 
+          if (MODE < 2)
+            digitalWrite(usblsb, MODE); // MODE 0,2 LSB (relay off)
+          if (MODE > 1)
+            digitalWrite(usblsb, MODE-2); // MODE 1,3 USB (relay on)
         updateOsc();    // switch rx offset based on mode
         continue;
      }
      // show 'menu' on LCD
      while (digitalRead(modesw) == 0) continue;
      // call to menu routine
-     menu();
+     //menu();
      // update LCD on return
     }  // done
     
+    
+    
     delay(50); // may kill some noise
      
-     continue;
+    continue;
    }
 }
 
