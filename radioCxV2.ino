@@ -376,7 +376,7 @@ void updateMode() {
     |   7  |   6   |   5  |  4  |  3  |   2   |   1  |   0  |
      cw/ssb usb/lsb    tx               11-15   8-11    4-8
       
-11-15 is a high pass at 11, low pass at 15mc
+4-8 is a high pass at 4, low pass at 8 mc
 8-11 is a high pass at 8 mc, low pass at 11 mc
 11-15 is a high pass at 11 mc, low pass at 15 mc
 
@@ -420,7 +420,7 @@ void updateBand() {
     |   7  |   6   |   5  |  4  |  3  |   2   |   1  |   0  |
      cw/ssb usb/lsb    tx               11-15   8-11    4-8
       
-11-15 is a high pass at 11, low pass at 15mc
+4-8 is a high pass at 4, low pass at 8 mc
 8-11 is a high pass at 8 mc, low pass at 11 mc
 11-15 is a high pass at 11 mc, low pass at 15 mc
 
@@ -545,6 +545,7 @@ void loop() {
    int USBLSBVAL;      // used to detect usb/lsb switch change
    int i,x;      // misc variable
    extern byte radioReg;
+   long voltLoop = 0;    // timing loop to show DC voltage updates every 5 seconds
    
 /* if vfo/chan button (vc) is pressed during power-up, jump
  * to MENU mode to read DC voltage, set some things, and calibrate
@@ -751,6 +752,13 @@ void loop() {
     
     
     
+    /* update the DC voltage reading once every 5 seconds or so */
+     voltLoop++;
+     if (voltLoop == 500000) {  // 500,000 is roughly 5 seconds at 16 MHz clock
+       updateDcVolt();
+       voltLoop = 0;
+     }
+
    
      
     continue;
