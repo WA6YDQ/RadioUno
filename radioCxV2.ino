@@ -45,7 +45,8 @@
 * wspr(freq)     Transmit WSPR on (freq) (called from menu, freq is pre-defined)
 *                Call and Grid are predefined before setup() is called. Power
 *                is defined in the wspr() routine.
-*
+* txKey()        key the transmitter (send 1 to GP5 of the MCP23008)
+* txDekey()      dekey the transmitter (send 0 to GP5 of the MCP23008)
 */
 
 
@@ -70,7 +71,7 @@ Adafruit_SI5351 clockgen = Adafruit_SI5351();
 LiquidCrystal lcd1(10,13,6,7,8,9);    // RS, e, D4, D5, D6, D7
 // (original version used 2 lcd displays)
  
-/* define input/output lines */ 
+/* define input lines (output lines are on the port expander, I2C & LCD)*/ 
 const int knobsw = 4;   // digital pin D4 (encoder switch) White wire on mine
 const int knob = 2;     // digital pin D2 (encoder pulse) Brown wire on mine
 const int knobDir = 5;  // digital pin D5 (encoder direction) Blue wire on mine
@@ -535,6 +536,27 @@ void menu() {
 }
 
 
+void txKey() {  // key TX
+  extern byte radioReg;
+  radioReg |= B00100000;         // set key line 
+  Wire.beginTransmission(0x20);  // set up communication with port expander
+  Wire.write(0x09);              // select GPIO pins
+  Wire.write(radioReg);          // update pins
+  Wire.endTransmission();        // done
+  return;
+}
+
+void txDekey() {   // unkey TX
+  extern byte radioReg;
+  radioReg &= B11011111;         // set key line 
+  Wire.beginTransmission(0x20);  // set up communication with port expander
+  Wire.write(0x09);              // select GPIO pins
+  Wire.write(radioReg);          // update pins
+  Wire.endTransmission();        // done
+  return;
+}
+
+
    
 /**************************/   
 /******* MAIN LOOP ********/
@@ -553,6 +575,8 @@ void loop() {
    int i,x;      // misc variable
    extern byte radioReg;
    long voltLoop = 0;    // timing loop to show DC voltage updates every 5 seconds
+   extern int MODE;
+   
    
 /* if vfo/chan button (vc) is pressed during power-up, jump
  * to MENU mode to read DC voltage, set some things, and calibrate
@@ -566,7 +590,8 @@ void loop() {
    }
    
    // vfo/chan button - NOT pressed during startup; continue normal operation
-      
+   
+   MODE = 0;    // initial define until read from the EEPROM   
    /* start in vfo mode (vfoChan = 0) */
    vfoChan = 0;
    /* read EEPROM from channel 0, set as vfo frequency */
@@ -716,11 +741,7 @@ void loop() {
     /* test keyIn line */
     if (digitalRead(keyIn) == 0) {   // TX key pressed
       tone(toneOut, SIDETONE);       // turn on sidetone
-      radioReg |= B00100000;         // set key line 
-      Wire.beginTransmission(0x20);  // set up communication with port expander
-      Wire.write(0x09);              // select GPIO pins
-      Wire.write(radioReg);          // update pins
-      Wire.endTransmission();        // done
+      txKey();                       // key the transmitter
       while (digitalRead(keyIn)==0) { 
         refVoltage = analogRead(refIn);  // read reflected power
         refVoltage /= 128;               // bring in range 0-7
@@ -730,11 +751,7 @@ void loop() {
         continue;                    // wait 'till released
       }
       noTone(toneOut);               // turn off sidetone
-      radioReg &= B11011111;         // clear key line
-      Wire.beginTransmission(0x20);  // set up communication with port expander
-      Wire.write(0x09);              // select GPIO pins
-      Wire.write(radioReg);          // update pins
-      Wire.endTransmission();        // done
+      txDekey();                     // dekey the transmitter
       updateFreq();                  // restore the display from swr reading
       continue;
     }
@@ -901,7 +918,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   
   // now load these channels in EEPROM
   MODE = 1;  // defaults to USB
-  for (i=1; i<100; i++) {
+  for (i=0; i<100; i++) { // includes ch 00
      chan = i;
      freq = defaultFreq[chan];
      Save();
@@ -1086,3 +1103,29 @@ int parity(unsigned long x) {  // returns 1 or 0, x is a BIG #
 
 
 
+/*******************/
+/**** CW Beacon ****/
+/*******************/
+
+// this is just a stub for later
+
+/*
+void cwbeacon() {
+  int i,n;
+  int DELAY;
+  int SPEED = 15;    // speed in WPM
+  
+  const PROGMEM char cwcode[42][8] = {
+    "13","3111","3131","311","1","1131","331","1111","11","1333",  // a-j
+    "313","1311","33","31","333","1331","3313","131","111","3",    // k-t
+    "113","1113","133","3113","3133","3311",                       // u-z
+    "33333","13333","11333","11133","11113","11111",               // 0-5
+    "31111","33111","33311","33331",                               // 6-9
+    "131313","113311","331133",   // period(.), question(?), comma(,)
+    "31113","31131"               // double dash (-), dn(/)
+  };
+  
+  const PROGMEM cwmsg[] = "DE MYCALL/5 CM98 BEACON"
+
+}
+*/
