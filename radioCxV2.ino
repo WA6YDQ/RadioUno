@@ -1,72 +1,50 @@
 
-
-
 /*
-* multi-mode radio controller and synthisizer using an Arduino
+* multi-mode radio controller and synthesizer using an Arduino Uno
 * and si5351 oscillator. Also used is an MCP23008 I/O expander
-* for low pass filter and receiver filter selection.
+* for RF filter and hardware control of modules.
 *
 * k theis <theis.kurt@gmail.com> 11/2018
-* V2 - has 16x2 LCD, mode/menu button, line for relay cx for usb/lsb on rx
-* added voltage and mode to display
 *
-* This is a controller for a tayloe type receiver (SDR)
-* and cw transmitter that covers 3.0 MHz thru 30.0 MHz
+* Ver2 - has 16x2 LCD, a mode/menu button, a channel/vfo store/recall
+* button, a rotary (mechanical) encoder with a button. The button steps
+* thru tuning steps from 10hz thru 100 khz depending on long or short pushes.
 *
-* It has a VFO and 100 channels stored in EEPROM memory.
-* The display device is a 1x8 LCD display (big digits on my device)
-* and a mechanical rotary encoder with a push button switch to
-* change the tune speed from 10 hz thru 100khz (short and long push).
+* There is a MCP23008 I2C port expander that controls relays for band filters,
+* cw/ssb tx/rx control and usb/lsb relay control for the receiver.
 *
-* A momentary pushbutton is used to switch VFO mode and Channel mode
-* with a short press. In VFO mode, a short press will put you
-* in channel mode and display the channel number.
-* In channel mode a short press will put you in VFO mode
-* restoring the vfo frequency that existed when jumping to
-* channel mode. Also, pressing on the rotary encoder switch while in
-* channel mode will show the channel frequency.
+* The oscillator is a Si5351 used for Tx and Rx.
 *
-* When turning on, the radio defaults to channel 01 and puts you 
-* in VFO mode. Also, what ever frequency that is in Channel 00 is 
-* placed in the vfo at turn-on. Think of channel 00 as your home channel.
+* Note: there is no provision for a frequency lockout. This will transmit
+* across all frequencies. YOU are responsible to follow all laws in your
+* region regarding what frequencies (if any) you can transmit on.
 *
-* A long press on the VFO/CHANNEL button will:
-* If in VFO mode, save the current displayed frequency to the current
-* channel. If you want to save the vfo frequency to say, channel 23, 
-* a short press on the VFO/Chan button will put you in chan mode.
-* Rotate the encoder to channel 23. A short press will put you
-* back in vfo mode. A long press will save the displayed frequency to
-* channel 23. (Store).
-*
-* If in Channel mode, a long press will recall the channel frequency
-* of the current channel, placing it in the vfo. Also, you will jump 
-* out of channel mode and go back to vfo mode. (Recall).
-*
-* If the chan/vfo button is pressed while turning on the power, you will
-* be placed in the menu mode where you can define settings, read DC 
-* voltage, and other stuff.
-*
-*
-* Menu Operation
+* Please Note: You can probably save some flash memory by tightening up many
+* of these routines, but that would make it harder for a beginning programmer
+* to understand. As long as there is available memory, I keep it verbose.
+*/
+
+/* Subroutines:
 * 
-* Holding the vfo/channel button in while powering up will start
-* the menu system. The display will show 'Menu' then after a second 
-* will take you to the menu choices. These are accessed by rotating
-* the rotary encoder.
-*
-* Choice 1: Show DC Voltage at the power terminals of the radio.
-*
-* Choice 2: Set the EEPROM channels to default values. To do this, press
-* the vfo/channel button for about 1/2 a second. You will see the message
-* 'working' followed by 'done'. EEPROM channels 1-99 will be reset. For
-* a list of the default channels see the code below loop().
+* updateBand()   look at current frequency, send filter data to port expander
+* updateFreq()   show the current frequency and channel data on the LCD display
+* updateMode()   change register to one of cw-L, cw-U, lsb, ssb, update display
+*                and update the port expander for hardware control
+* Save()         Save frequency and mode to EEPROM based on channel #
+* Recall()       Read frequency and mode from EEPROM, update registers and display
+* UpdateDcVolt() Read analog pin, divide by constant for true voltage, display on LCD
+* changeFreq()   Interrupt driven - read rotary encoder, change freq/channel/menu etc
+* updateOsc()    Read from freq and mode. Send display freq to osc0, derived rx to osc1
+* menu()         Menu sub-system. Control registers, run special functions
+* setDefault()   Initialize the EEPROM with default frequencies
+* wspr(freq)     Transmit WSPR on (freq) (called from menu, freq is pre-defined)
 *
 */
 
 
-#define MINFREQ  3000000    // lowest frequency (hz)
-#define MAXFREQ 30000000    // highest frequency (hz)
-#define MINVOLT 9.9         // dc voltage which low volt alert happens
+
+#define MINFREQ  4900000    // lowest operating frequency (hz)
+#define MAXFREQ 15100000    // highest operating frequency (hz)
 
 
 #include <LiquidCrystal.h>
@@ -76,33 +54,31 @@
 #include <asserts.h>
 #include <Adafruit_SI5351.h>
 #include <errors.h>
-#include <string.h>    // for wspr
-#include <ctype.h>    // for wspr
+//#include <string.h>    // for wspr
+//#include <ctype.h>    // for wspr
 
 Adafruit_SI5351 clockgen = Adafruit_SI5351();
 
 // lcd1 is Frequency Display (LCD D0 thru D3 are unused and left floating)
 LiquidCrystal lcd1(10,13,6,7,8,9);    // RS, e, D4, D5, D6, D7
-
+// (original version used 2 lcd displays)
  
 /* define input/output lines */ 
 const int knobsw = 4;   // digital pin D4 (encoder switch) White wire on mine
 const int knob = 2;     // digital pin D2 (encoder pulse) Brown wire on mine
 const int knobDir = 5;  // digital pin D5 (encoder direction) Blue wire on mine
 
-const int dcVoltage = A0;  // read dc voltage pin A0 (thru trimmer resistor) on A0
+const int dcVoltage = A0;  // read dc voltage (thru 10K trimmer resistor) on A0
 const int toneOut = A1;    // audio tone out while in transmit on A1
-const int usblsb = A2;     // usb/lsb output to relay driver for Rx
 const int refIn = A3;      // dc reflected power input (used in transmit)
 const int vc = 3;          // pushbutton, vfo/channel and sto/rcl on D3
-const int keyIn = 11;      // key line in/key line out on D11
-const int keyOut = 11;     // key out (shared with keyIn) wspr/cw beacon D11
-const int modesw = 12;       // Mode switch (menu long press)
+const int keyIn = 11;      // key line in on D11
+const int modesw = 12;     // Mode switch (menu long press)
 
 
-const char *call = "WA6YDQ";  // WSPR Call Sign
-const char *grid = "EN91";    // WSPR grid square
-//const int txpower = 15;      // WSPR power to antenna
+const char *call = "WA6YDQ";  // WSPR Call Sign (change for your call)
+const char *grid = "EN91";    // WSPR grid square (change for your grid)
+//const int txpower = 15;      // WSPR power to antenna (set in wspr() routine)
 
 float VOLT;          // read DC Voltage on pin A0
 float freq;          // main frequency in Hz
@@ -116,7 +92,8 @@ float MULTI = 28.0;  // multiplier (* XTAL) for PLL (used in transmit pll only)
 float XTAL = 25.0;   // Crystal frequency of PLL clock (MHz)
 unsigned int SIDETONE = 700;    // sidetone frequency for tone out and CW offset
 int MODE = 0;
-const char mode[4][6] = {"LSB","USB","CW-L","CW-U"};
+const char mode[4][6] = {"LSB ","USB ","CW-L","CW-U"};
+byte radioReg;      // set radio filters, radio mode etc
 
 
 /* set up hardware ports etc */ 
@@ -131,7 +108,6 @@ void setup() {
    pinMode(knobDir, INPUT_PULLUP);
    pinMode(vc, INPUT_PULLUP);
    pinMode(keyIn, INPUT_PULLUP);
-   pinMode(usblsb, OUTPUT);
    pinMode(modesw, INPUT_PULLUP);
    analogReference(DEFAULT);    // use 5vdc for this 5v arduino
    
@@ -141,7 +117,7 @@ void setup() {
    /* set up I2C */
    Wire.begin();
    
-   /* initialize band port-expander */
+   /* initialize port-expander */
    Wire.beginTransmission(0x20);  // select port expander
    Wire.write(0x00);        // select IODIRA of port expander
    Wire.write(0x00);        // PORT A all output
@@ -151,7 +127,7 @@ void setup() {
    if (clockgen.begin() != ERROR_NONE) {
      lcd1.home();
      lcd1.print("CLK ERR");    // if it doesn't start up, no reason to continue
-     while (true) continue;
+     while (true) continue;    // so loop until power cycled
    }
       
    /* set up PLL B for rx freq range (12-120 MHz) */
@@ -205,16 +181,6 @@ void updateFreq() {  // this is called from inside an interrupt - delays, I2C di
 }
 
 
-/* show mode on lcd display */
-void updateMode() {
-  extern int MODE;
-  
-  lcd1.setCursor(0,1);    // row 1 pos 0
-  lcd1.print(mode[MODE]);
-  return;
-}
-
-
 
 
  
@@ -222,8 +188,9 @@ void updateMode() {
 void Save() {
   extern float freq;
   extern int chan;
+  extern int MODE;
   int i;
-  int address = chan * 4;  // store freq as (4 byte) long 
+  int address = chan * 5;  // store freq as (4 byte) long, mode as 1 byte
   union u_tag
   {
       byte b[4];
@@ -231,8 +198,9 @@ void Save() {
   } u;
   u.fval = freq;
   for (i=0; i<4; i++) {
-  EEPROM.write(address+i, u.b[i]);
+  EEPROM.write(address+i, u.b[i]);  // save float value of freq
   }
+  EEPROM.write(address+4, MODE);    // save mode value
 
   return;
 }
@@ -243,8 +211,9 @@ void Save() {
 void Recall() {
   extern float freq;
   extern int chan;
+  extern int MODE;
   int i;
-  int address = chan * 4;
+  int address = chan * 5;  // recall freq as 4 byte values, mode as 1 byte
   union u_tag
   {
       byte b[4];
@@ -254,6 +223,7 @@ void Recall() {
     u.b[i] = EEPROM.read(address+i);
   }
   freq = u.fval;
+  MODE = EEPROM.read(address+4);    // get mode value
   
   return;
 } 
@@ -269,12 +239,12 @@ void updateDcVolt() {
   
   VOLT = analogRead(dcVoltage)/100.0;    // read DC voltage (use a float here)
   // dtostrf(float var,str len, digits after decimal point, var to hold val)
-  dtostrf(VOLT,4,1,buf);  // arduino can't handle floats (WTF? it has a c compiler)
-  // this stupid little routine takes 2K of memory!!
+  dtostrf(VOLT,11,1,buf);  // arduino can't handle floats (WTF? it has a c compiler)
+  // this stupid little routine takes >2K of memory!!
   lcd1.home();
   lcd1.print("DC");
   lcd1.print(buf);
-  lcd1.setCursor(7,1);
+  lcd1.setCursor(15,1);
   lcd1.write("V");  // show as voltage
   
   return;
@@ -399,31 +369,81 @@ void updateOsc() {
    return;
 }
 
+void updateMode() {
+  extern byte radioReg;
+  extern int MODE;
+/* 
+    |   7  |   6   |   5  |  4  |  3  |   2   |   1  |   0  |
+     cw/ssb usb/lsb    tx               11-15   8-11    4-8
+      
+11-15 is a high pass at 11, low pass at 15mc
+8-11 is a high pass at 8 mc, low pass at 11 mc
+11-15 is a high pass at 11 mc, low pass at 15 mc
+
+cw/ssb is 0 for cw, 1 for ssb
+usb/lsb is 0 for lsb, 1 for usb
+tx = 0 for RX, 1 for TX
+*/ 
+
+  if (MODE == 0) {    // LSB
+    radioReg &= B00000111;    // clear current mode
+    radioReg |= B10000000;    // set SSB/LSB
+  }
+  if (MODE == 1) {   // USB
+    radioReg &= B00000111;    // clear current mode
+    radioReg |= B11000000;    // set SSB/USB
+  }
+  if (MODE == 2) {   // CW-L
+    radioReg &= B00000111;    // clear current mode
+    radioReg |= B00000000;    // (not needed, just for consistancy)  
+  }
+  Wire.beginTransmission(0x20);  // set up communication with port expander
+  Wire.write(0x09);              // select GPIO pins
+  Wire.write(radioReg);           // set band pins
+  Wire.endTransmission();        // done
+  
+  /* update LCD display */
+  lcd1.setCursor(0,1);    // row 1 pos 0
+  lcd1.print(mode[MODE]);
+  
+  return;
+}
+
+
 
 
 /* update the band register for the TX low pass filters and rx filter */
 void updateBand() {
   extern float freq;
-  byte bandReg;
+  extern byte radioReg;
 /* 
-    | 7 | 6 | 5  | 4  | 3  | 2  | 1 | 0 |
-      X   R   30   22   15   11   8   4
- 4,8,11,15,22,30 mhz TX low pass filters
- R is Rx Inductor (11uh) [1] for 2.7mc thru 10.7mc [0] (1uh) for 9.2mc thru 35mc
- (I use a 10uH in parallel with a 1uH coil). The 10uH is switched in < 10 MHz)
-*/ 
+    |   7  |   6   |   5  |  4  |  3  |   2   |   1  |   0  |
+     cw/ssb usb/lsb    tx               11-15   8-11    4-8
+      
+11-15 is a high pass at 11, low pass at 15mc
+8-11 is a high pass at 8 mc, low pass at 11 mc
+11-15 is a high pass at 11 mc, low pass at 15 mc
 
-  if (freq < 4000000) bandReg = B01000001;  // 4 MHz LPF
-  if ((freq >= 4000000) && (freq < 8000000)) bandReg = B01000010;  // 8 MHz LPF
-  if ((freq >= 8000000) && (freq < 10000000)) bandReg = B01000100;  // 11 MHz LPF
-  if ((freq >= 10000000) && (freq < 11000000)) bandReg = B00000100; // 11 MHz LPF
-  if ((freq >= 11000000) && (freq < 15000000)) bandReg = B00001000; // 15 MHz LPF
-  if ((freq >= 15000000) && (freq < 22000000)) bandReg = B00010000; // 22 MHz LPF
-  if (freq >= 22000000) bandReg = B00100000;  // 30 MHz LPF
+cw/ssb is 0 for cw, 1 for ssb
+usb/lsb is 0 for lsb, 1 for usb
+tx = 0 for RX, 1 for TX
+*/ 
+  if ((freq >= 4800000) && (freq < 8000000)) {  // 4.8mc thru 8 mc
+    radioReg &= B11111000;  // turn off existing band filters
+    radioReg |= B00000001;  // set band 1 line
+  }
+  if ((freq >= 8000000) && (freq < 11000000)) {  // 8 mc thru 11 mc
+    radioReg &= B11111000;  // turn off existing band filters
+    radioReg |= B00000010;  // set band 2 line
+  }
+  if ((freq >= 11000000) && (freq < 15200000)) {  // 11 mc thru 15.2 mc
+    radioReg &= B11111000;  // turn off existing band filters
+    radioReg |= B00000100;  // set band 3 line
+  }
   
   Wire.beginTransmission(0x20);  // set up communication with port expander
   Wire.write(0x09);              // select GPIO pins
-  Wire.write(bandReg);           // set band pins
+  Wire.write(radioReg);           // set band pins
   Wire.endTransmission();        // done
   
   return;
@@ -433,8 +453,6 @@ void updateBand() {
 
 
 /* MENU mode - set certain values, read DC voltage, etc */
-/* to get OUT of menu mode, power cycle the radio */
-
 void menu() {
   extern int vfoChan;
   extern int menu_sel;
@@ -526,7 +544,7 @@ void loop() {
    int SBCWVAL;    // used to detect ssb/cw switch change
    int USBLSBVAL;      // used to detect usb/lsb switch change
    int i,x;      // misc variable
-   
+   extern byte radioReg;
    
 /* if vfo/chan button (vc) is pressed during power-up, jump
  * to MENU mode to read DC voltage, set some things, and calibrate
@@ -628,7 +646,7 @@ void loop() {
        
      
      
-     /* test for vfo/chan- sto/rcl button press */
+     /* test for vfo/chan(short press), sto/rcl(long press) button press */
      if (digitalRead(vc) == LOW) {
        delay(250);
        if (digitalRead(vc) == HIGH) {    // short press
@@ -675,7 +693,7 @@ void loop() {
      
      
      if (FREQFLAG) {    // FLAG changed due to interrupt on knob rotation
-       //updateFreq();  (moved to knob routine)
+       //updateFreq() in knob routine (helps to slow down routine and stop glitches)
        updateOsc();
        FREQFLAG = 0;
      }
@@ -683,23 +701,33 @@ void loop() {
     /* if MHz digit changes, test and update the band register */ 
     if ((int)(freq/1000000) != freqMSB) {
       freqMSB = (int)(freq/1000000);    // get new MHz value
-      updateBand();
+      updateBand();  // test for and change RF filters
     }
      
      
     /* test keyIn line */
-    if (digitalRead(keyIn) == 0) {    // TX key pressed
-      tone(toneOut, SIDETONE);  // turn on sidetone
+    if (digitalRead(keyIn) == 0) {   // TX key pressed
+      tone(toneOut, SIDETONE);       // turn on sidetone
+      radioReg |= B00100000;         // set key line 
+      Wire.beginTransmission(0x20);  // set up communication with port expander
+      Wire.write(0x09);              // select GPIO pins
+      Wire.write(radioReg);          // update pins
+      Wire.endTransmission();        // done
       while (digitalRead(keyIn)==0) { 
         refVoltage = analogRead(refIn);  // read reflected power
-        refVoltage /= 128;      // bring in range 0-7
-        lcd1.home();  // print a bar graph of ref power
+        refVoltage /= 128;               // bring in range 0-7
+        lcd1.home();                     // print a bar graph of ref power
         for (i=0; i<refVoltage; i++) lcd1.write('|');
         for (x=i; x<8; x++) lcd1.write(' ');  // blank rest of display
-        continue;  // wait 'till released
+        continue;                    // wait 'till released
       }
-      noTone(toneOut);    // turn off sidetone
-      updateFreq();       // restore the display
+      noTone(toneOut);               // turn off sidetone
+      radioReg &= B11011111;         // clear key line
+      Wire.beginTransmission(0x20);  // set up communication with port expander
+      Wire.write(0x09);              // select GPIO pins
+      Wire.write(radioReg);          // update pins
+      Wire.endTransmission();        // done
+      updateFreq();                  // restore the display from swr reading
       continue;
     }
      
@@ -710,11 +738,7 @@ void loop() {
      if (digitalRead(modesw) == 1) {    // short press - MODE function
         MODE += 1;
         if (MODE == 4) MODE = 0;      // cycle thru
-          updateMode();   // update LCD 
-          if (MODE < 2)
-            digitalWrite(usblsb, MODE); // MODE 0,2 LSB (relay off)
-          if (MODE > 1)
-            digitalWrite(usblsb, MODE-2); // MODE 1,3 USB (relay on)
+        updateMode();   // update LCD/radio registers 
         updateOsc();    // switch rx offset based on mode
         continue;
      }
@@ -727,7 +751,7 @@ void loop() {
     
     
     
-    delay(50); // may kill some noise
+   
      
     continue;
    }
@@ -743,10 +767,15 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   // (and may not be called at all - user's choice)
   extern float freq;
   extern int chan;
+  extern int MODE;
   int i;    // counter
+  
+  // EEPROM storage: frequency (4 bytes), mode (1 byte)
+  // format: 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband
+  
   const PROGMEM float defaultFreq[100] = {
      7030000,  // start freq when turned on
-     3525000,  // 80M cw ch 1
+     3525000, // 80M cw ch 1
      7035000,  // 40M cw ch 2
     10110000,  // 30M cw ch 3
     14035000,  // 20M cw ch 4
@@ -856,6 +885,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   };
   
   // now load these channels in EEPROM
+  MODE = 1;  // defaults to USB
   for (i=1; i<100; i++) {
      chan = i;
      freq = defaultFreq[chan];
