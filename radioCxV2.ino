@@ -4,6 +4,11 @@
 * and si5351 oscillator. Also used is an MCP23008 I/O expander
 * for RF filter and hardware control of modules.
 *
+*
+*  This code is GPL-3.0 There is no warranty, implied or otherwise
+*  that this code will work. It may not. It might destroy society
+*  as we know it. 
+*
 * k theis <theis.kurt@gmail.com> 11/2018
 *
 * Ver2 - has 16x2 LCD, a mode/menu button, a channel/vfo store/recall
@@ -38,6 +43,8 @@
 * menu()         Menu sub-system. Control registers, run special functions
 * setDefault()   Initialize the EEPROM with default frequencies
 * wspr(freq)     Transmit WSPR on (freq) (called from menu, freq is pre-defined)
+*                Call and Grid are predefined before setup() is called. Power
+*                is defined in the wspr() routine.
 *
 */
 
@@ -76,9 +83,9 @@ const int keyIn = 11;      // key line in on D11
 const int modesw = 12;     // Mode switch (menu long press)
 
 
-const char *call = "WA6YDQ";  // WSPR Call Sign (change for your call)
-const char *grid = "EN91";    // WSPR grid square (change for your grid)
-//const int txpower = 15;      // WSPR power to antenna (set in wspr() routine)
+const char *call = "D0UMY";  // WSPR Call Sign (change for your call)
+const char *grid = "CM98";   // WSPR grid square (change for your grid)
+//const int txpower = 15;    // WSPR power to antenna (set in wspr() routine)
 
 float VOLT;          // read DC Voltage on pin A0
 float freq;          // main frequency in Hz
