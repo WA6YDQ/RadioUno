@@ -18,5 +18,7 @@ filters.
 It also generates WSPR symbols and has been tested successfully over the air as a WSPR
 transmitter.
 
-This is on-going. 
-As the hardware matures I'll post schematics. 
+This is on-going.
+
+As the hardware matures I'll post schematics. For now, all pinouts are in the comments.
+
