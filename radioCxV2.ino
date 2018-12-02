@@ -45,10 +45,26 @@
 * wspr(freq)     Transmit WSPR on (freq) (called from menu, freq is pre-defined)
 *                Call and Grid are predefined before setup() is called. Power
 *                is defined in the wspr() routine.
-* txKey()        key the transmitter (send 1 to GP5 of the MCP23008)
-* txDekey()      dekey the transmitter (send 0 to GP5 of the MCP23008)
+* txKey()        key the transmitter (send 1 to GP5 of the MCP23008), set Tx freq to display
+* txDekey()      dekey the transmitter (send 0 to GP5 of the MCP23008), shift Tx freq to 1 MHz
+* 
 */
 
+/*
+* Notes - 
+* At startup, the TX freq is set to 1 MHz. The Adafruit libraries I use for the
+* Si5351 don't allow the individual clocks to be enabled/disabled. It's all
+* or nothing. With the TX freq set all the time, it's signal is heard on the receiver.
+*
+*
+*  Enabled desired outputs (see Register 3)
+*  ASSERT_STATUS(write8(SI5351_REGISTER_3_OUTPUT_ENABLE_CONTROL, enabled ? 0x00: 0xFF));
+* This should enable/disable indiv clocks
+* bit: 2 is CLK2_EN  1 is CLK1_EN   0 is CLK0_EN
+* located in routine: Adafruit_SI5351::enableOutputs(bool enabled)
+* (the etherkit libs seem more suited for this - see github.com/etherkit/Si5351Arduino)
+*
+*/
 
 
 #define MINFREQ  4900000    // lowest operating frequency (hz)
@@ -352,10 +368,10 @@ void updateOsc() {
    VB = 1000000.0;
    
    // set up the receive frequency
-   if (MODE == 0) rxFreq = freq + 1500.0;  // LSB
-   if (MODE == 1) rxFreq = freq - 1500.0;  // USB
-   if (MODE == 2) rxFreq = freq + (float)SIDETONE;    // CW-L
-   if (MODE == 3) rxFreq = freq - (float)SIDETONE;   // CW-U
+   if (MODE == 0) rxFreq = freq; // + 1500.0;  // LSB
+   if (MODE == 1) rxFreq = freq; // - 1500.0;  // USB
+   if (MODE == 2) rxFreq = freq; // + (float)SIDETONE;    // CW-L
+   if (MODE == 3) rxFreq = freq; // - (float)SIDETONE;   // CW-U
  
    rxFreq *= 4.0;      // using a tayloe detector, rx freq is 4X display freq
    VALUE = rxFreq/VB;
@@ -365,14 +381,13 @@ void updateOsc() {
    VA = (long)((VALUE - VINT) * VB);
    clockgen.setupMultisynth(1, SI5351_PLL_B, VINT, VA, VB);  // output on osc 1
    
-   // set up the transmit frequency
-   
-   VALUE = freq/VB;    // tx freq is display freq, no offsets
-   DIV = XTAL * MULTI;
-   VALUE = DIV/VALUE;
-   VINT = (long)VALUE;
-   VA = (long)((VALUE - VINT) * VB);
-   clockgen.setupMultisynth(0, SI5351_PLL_A, VINT, VA, VB); // output on osc 0
+   // set up the transmit frequency (moved to txKey() )
+   //VALUE = freq/VB;    // tx freq is display freq, no offsets
+   //DIV = XTAL * MULTI;
+   //VALUE = DIV/VALUE;
+   //VINT = (long)VALUE;
+   //VA = (long)((VALUE - VINT) * VB);
+   //clockgen.setupMultisynth(0, SI5351_PLL_A, VINT, VA, VB); // output on osc 0
    
    return;
 }
@@ -538,21 +553,45 @@ void menu() {
 
 void txKey() {  // key TX
   extern byte radioReg;
+  extern float freq;
+  float VALUE, DIV, VINT, VA, VB;
+  VB = 1000000;
+  
   radioReg |= B00100000;         // set key line 
   Wire.beginTransmission(0x20);  // set up communication with port expander
   Wire.write(0x09);              // select GPIO pins
   Wire.write(radioReg);          // update pins
   Wire.endTransmission();        // done
+  
+  // set up the transmit frequency
+  VALUE = freq/VB;    // tx freq is display freq, no offsets
+  DIV = XTAL * MULTI;
+  VALUE = DIV/VALUE;
+  VINT = (long)VALUE;
+  VA = (long)((VALUE - VINT) * VB);
+  clockgen.setupMultisynth(0, SI5351_PLL_A, VINT, VA, VB); // output on osc 0
+ 
   return;
 }
 
 void txDekey() {   // unkey TX
   extern byte radioReg;
+  float VALUE, DIV, VINT, VA, VB;
+  VB = 1000000;
+  
   radioReg &= B11011111;         // set key line 
   Wire.beginTransmission(0x20);  // set up communication with port expander
   Wire.write(0x09);              // select GPIO pins
   Wire.write(radioReg);          // update pins
   Wire.endTransmission();        // done
+  
+    // set up the transmit frequency to 1 mhz (if on-freq, we hear it in rx)
+  VALUE = 1000000.0/VB;    // tx freq is display freq, no offsets
+  DIV = XTAL * MULTI;
+  VALUE = DIV/VALUE;
+  VINT = (long)VALUE;
+  VA = (long)((VALUE - VINT) * VB);
+  clockgen.setupMultisynth(0, SI5351_PLL_A, VINT, VA, VB); // output on osc 0
   return;
 }
 
@@ -602,6 +641,7 @@ void loop() {
    /* show vfo freq */
    updateFreq();    // initial display of frequency
    updateOsc();     // set oscillator freq for TX/RX
+   txDekey();       // set tx freq to 1MHz (start it, but move away from rx)
    updateBand();    // set band register for low pass filters and rx filter
    freqMSB = (int)(freq/1000000);  // when this changes, update the band register
  
