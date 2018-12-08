@@ -14,9 +14,9 @@ transmit WSPR from one of the channels or the VFO.
 The code is in Beta at the moment. It's working for me, but I'm adding features.
 
 TODO: 
-add a keyer (currently cw manual only right now)
-add cw beacon mode 
-try a different Si5351 library (limitations on the current one used)
-add a calibrate function
+add a keyer (currently cw manual only right now);
+add cw beacon mode;
+try a different Si5351 library (limitations on the current one used);
+add a calibrate function;
 
 
