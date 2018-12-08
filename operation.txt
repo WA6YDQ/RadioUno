@@ -1,0 +1,131 @@
+This document describes the operation of the arduino radio controller. 
+For the purposes of this document, it is assumed it is installed in and
+controlling a radio.
+
+At power up, the frequency and mode are read from memory channel 00 in
+EEPROM. These are used for initial operation. The channel number is then 
+set to 01 and the radio is put in VFO mode.
+
+The radio is put in receive mode and the band map register is set and
+the band lines are output on the MCP23008 port expander to select the 
+low pass filters.
+
+The default tuning step is set to 10hz.
+
+The LCD display will show the following:
+Left, top line:
+VF (vfo mode)
+01 (the memory channel in CHANNEL mode is set for channel 01)
+The transmit frequency (receive frequency will differ in certain modes)
+A 'R' for receive.
+
+Left, bottom line:
+The mode (LSB, USB, etc)
+DC Voltage read from the DC in line
+
+If the VFO/CHANNEL button is pressed while turning on the radio, you will 
+placed in the MENU mode. Details about the MENU mode are discussed later.
+
+If the MODE/RIT button is pressed while turning the radio on, the keyer mode
+will be set to auto (act as a CW keyer). If not pressed, keying will be
+manual (default).
+
+Turning the TUNE knob will change the displayed (and RF) frequency. Clockwise
+tunes UP, counter-clockwise tunes DOWN. The step size is based on pushing the
+switch on the rotary encoder. Default step size is 10 hz. A short push ( less 
+than 1/4 second) increments the step size by 10 to 100 hz. Another short press
+increments by 10 to 1 KHz. Another short push resets back to 10 hz.
+
+A long push sets the step size to 10 KHz. Another long push sets to 100 KHz.
+Every long push will alternate between 
+10 KHz and 100 KHz. A short push resets the step size to 10 hz.
+
+A short press on the MODE button steps through the modulation modes. They are:
+LSB (lower side band)
+USB (upper side band)
+CW-U (CW, upper side band receive)
+CW-L (CW, lower side band receive)
+CW-B (CW burst (use additional hardware for burst mode, receive upper side band)
+WSPR (transmit using WSPR (described below), receive upper sideband)
+BECN (transmit CW beacon (described below), receive upper side band)
+and then back to begining (LSB).
+
+A short press on the VFO/CHANNEL button will toggle between VFO mode and 
+CHANNEL mode. In VFO mode, you will tune between MINFREQ (set in the source 
+code as 2.90 MHz) and MAXFREQ (set in source code as 15.2 MHz). 
+
+In CHANNEL mode you can select 100 channels from 00 thru 99. Each channel
+holds a frequency and mode.
+
+When in VFO mode, a short press goes to channel mode. The current frequency 
+and mode are stored. A short press while in CHANNEL mode will restore the
+saved frequency and mode.
+
+In CHANNEL mode rotating the rotary encoder clockwise will increase the 
+channel number by 1 until channel 99. Then further clockwide rotation will 
+have no effect. Rotating the rotary encoder in CHANNEL mode counterclockwise will
+decrease the channel number by 1 until channel 00. Further rotation past 00 will
+have no effect.
+
+When in CHANNEL mode, a long press will recall the current channel information
+(frequency and mode) to the VFO, deleting whatever was in the VFO at the time.
+Also you will switch from CHANNEL mode to VFO mode when recalling a channel.
+
+When in VFO mode, a long press will store the current VFO frequency and mode to the
+channel number shown in the display. The current VFO frequency and mode will not
+change. You will see a displayed message that the data was stored.
+
+If you want to store the current VFO data to a channel you are not on, do the
+following:
+
+Short press on VFO/CHANNEL button to select channel mode.
+Rotate the rotary encoder to select the channel. 
+Short press on VFO/CHANNEL button to go back to VFO mode.
+Long press on VFO/CHANNEL button will store the displayed frequency and mode
+to the displayed channel.
+
+Note: you can tell the current channel by the 2 digit number after the VF on the display.
+
+-- WSPR --
+
+I've added a WSPR beacon. To use it, either dial in one of the wspr frequencies
+on the VFO or go to preset channels 8-11. WSPR is time sensitive. It starts at 1 second 
+after the even numbered minutes. After selecting the frequency, short press the 
+MODE button to select WSPR. At 1 second past an even numbered minute, tap the transmit key.
+A wspr transmission will start and continue for the next 110 seconds (appx).
+
+Your call sign and grid are encoded in the beginning of the source code, while
+the power level is encoded in the wspr routine (need to change these values for your
+information).
+
+-- DC Voltage --
+
+Before powering up this controller, make sure the variable resistor tied to port
+A0 is set so that the voltage is set to 2.5 volts with 12.5 volts at the top of the
+variable resistor.
+
+-- SWR Display --
+
+Pin A3 is tied to a directional coupler to read reflected power during transmit.
+The lower pard of the LCD display will show a set of vertical bars corrosponding
+to reflected power during transmit. The greater number of bars the greater the
+reflected power.
+
+-- Setting Default Channels --
+
+Pressing and holding the VFO/CHANNEL button during power on will enter the MENU mode.
+Rotating the knob to 'set default chan'. Press the VFO/MEM button. You will see
+'working' displayed. After a couple seconds, you will see 'done'. Power cycle the
+controller and channels 00 thru 99 will be set to the frequencies and modes 
+seen in the end of the source code.
+
+-- Sidetone -- 
+
+During transmit, sidetone is generated at pin A1. This is a square wave and should 
+be fed to a low pass audio filter to make it sound better.
+
+
+There are a lot of comments in the source code. If you are competent at all, you should
+have no trouble using this.
+
+ 
