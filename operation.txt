@@ -117,7 +117,16 @@ Pressing and holding the VFO/CHANNEL button during power on will enter the MENU 
 Rotating the knob to 'set default chan'. Press the VFO/MEM button. You will see
 'working' displayed. After a couple seconds, you will see 'done'. Power cycle the
 controller and channels 00 thru 99 will be set to the frequencies and modes 
-seen in the end of the source code.
+seen in the end of the source code. NOTE: This also reset the oscillator calibration to 
+0 hz.
+
+-- Calibrating the Oscillator --
+
+Go into MENU mode (Press VFO/CHANNEL button while turning the radio on).
+The first option is Calibrate Osc. Press the VFO/CHANNEL button. The current
+frequency offset will be displayed (0 hz). Rotate the knob until the output at
+OSC 2 is exactly 10.0 MHz. Press the VFO/CHANNEL button to set. Power cycle to 
+resume normal operations.
 
 -- Sidetone -- 
 
