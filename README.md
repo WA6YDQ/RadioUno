@@ -11,6 +11,11 @@ an SWR indicator during transmit, DC voltage display on the 2x16 char LCD, diffe
 modes controlling lines on the MCP23008, and a WSPR subsection that lets you 
 transmit WSPR from one of the channels or the VFO.
 
+I use an Adafruit Si5351 breakout board for my clock osc.
+You will need to install the Adafruit si5351 library in your arduino
+library for this code to work. If you use another si5351 board (or roll your own)
+you will need to make the approiate changes. 
+
 The code is in Beta at the moment. It's working for me, but I'm adding features.
 
 TODO: 
