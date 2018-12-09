@@ -32,7 +32,6 @@
 *       add beacon mode
 *       burst is mostly hardware - test if this mode is needed
 *       try a different Si5351 library (or write code to turn on/off indiv Si ports)
-*       add calibrate function in menu mode
 *       put WSPR power variable at beginning of code, not WSPR routine
 */
 
@@ -722,17 +721,17 @@ void loop() {
 
    /* delare vars */ 
    float tempfreq;
-   extern int FREQFLAG; // 0 if no freq update, 1 if freq updated
-   extern float STEP;  // tune step size in hz
-   extern float VOLT;  // dc battery voltage read on pin A0
-   int freqMSB;        // frequency MSB (use for band register)
+   extern int FREQFLAG;    // 0 if no freq update, 1 if freq updated
+   extern float STEP;      // tune step size in hz
+   extern float VOLT;      // dc battery voltage read on pin A0
+   int freqMSB;            // frequency MSB (use for band register)
    extern unsigned int SIDETONE;
-   int refVoltage;     // reflected voltage displayed during transmit
-   int SBCWVAL;    // used to detect ssb/cw switch change
-   int USBLSBVAL;      // used to detect usb/lsb switch change
-   int i,x;      // misc variable
+   int refVoltage;         // reflected voltage displayed during transmit
+   int SBCWVAL;            // used to detect ssb/cw switch change
+   int USBLSBVAL;          // used to detect usb/lsb switch change
+   int i,x;                // misc variable
    extern byte radioReg;
-   long voltLoop = 0;    // timing loop to show DC voltage updates every 5 seconds
+   long voltLoop = 0;      // timing loop to show DC voltage updates every 5 seconds
    extern int MODE;
    int modeBak = 0;
    extern byte CWKEYER;
@@ -741,7 +740,7 @@ void loop() {
    
 /* if vfo/chan button (vc) is pressed during power-up, jump
  * to MENU mode to calibrate the oscillator & change settings 
- * of that don't normally get accessed.
+ * that don't normally get accessed.
 */
    if (digitalRead(vc) == 0) {
      delay(100);    // debounce
@@ -749,6 +748,7 @@ void loop() {
        menu();
      }
    }
+   
    // vfo/chan button - NOT pressed during startup; continue normal operation
    
    CWKEYER = digitalRead(modesw); // default is 1 - manual active.
@@ -763,30 +763,33 @@ void loop() {
      lcd1.print("               ");  // clear just displayed message
    }
    
+   /*****************************/
    /* initialize radio settings */
+   /*****************************/
    
    int ByHi, ByLo;
    ByHi = EEPROM.read(1020);    // retrieve caloffset bytes
    ByLo = EEPROM.read(1021);
    CALOFFSET = word(ByHi,ByLo);
+   if ((CALOFFSET > 3000) || (CALOFFSET < -3000)) CALOFFSET = 0; // assume eeprom corruption
    
-   MODE = 0;    // initial define until read from the EEPROM   
+   MODE = 0;         // initial define until read from the EEPROM   
    SIDETONE = 700;   // set sidetone (and cw offset)
    vfoChan = 0;      // start in vfo mode (vfoChan = 0)
    chan = 0;  
-   Recall();        // read EEPROM from channel 0, set as vfo frequency/mode
+   Recall();         // read EEPROM from channel 0, set as vfo frequency/mode
    if ((freq < MINFREQ) || (freq > MAXFREQ)) freq = MINFREQ; // in case eeprom is corrupted
    if ((MODE < 0) || (MODE > MAXMODE)) MODE = 0; // in case eeprom is corrupted
-   chan = 1;        // start at channel 1
-   updateFreq();    // initial display of frequency
-   updateOsc();     // set RX oscillator frequency
-   txDekey();       // set tx freq to 1MHz (start osc, but move away from rx)
-   updateBand();    // set band register for low pass filters and rx filter
-   updateMode();    // set MCP23008 lines and display mode
-   updateDcVolt();  // show dc voltage
+   chan = 1;         // start at channel 1
+   updateFreq();     // initial display of frequency
+   updateOsc();      // set RX oscillator frequency
+   txDekey();        // set tx freq to 1MHz (start osc, but move away from rx)
+   updateBand();     // set band register for low pass filters and rx filter
+   updateMode();     // set MCP23008 lines and display mode
+   updateDcVolt();   // show dc voltage
    freqMSB = (int)(freq/1000000);  // when this changes, update the band register
    lcd1.setCursor(15,0);
-   lcd1.write("R");    // show rx mode
+   lcd1.write("R");  // show rx mode
    
    
    /****************************/
@@ -1145,7 +1148,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
      Save();
   }
   
-  // save init value (0) for vfo offset (set correct value from menu)
+  // save init value (0) for vfo offset (you need to set correct value from menu)
   EEPROM.write(1020, highByte((int)0));
   EEPROM.write(1021, lowByte((int)0));
   
@@ -1342,6 +1345,7 @@ int parity(unsigned long x) {  // returns 1 or 0, x is a BIG #
 /*
 void cwbeacon() {
   int i,n;
+  char ch;
   int DELAY;
   int SPEED = 15;    // speed in WPM
   
@@ -1354,8 +1358,24 @@ void cwbeacon() {
     "131313","113311","331133",   // period(.), question(?), comma(,)
     "31113","31131"               // double dash (-), dn(/)
   };
+
+  const PROGMEM byte chrstring[42] = {
+    'A','B','C','D','E','F','G','H','I',
+    'J','K','L','M','N','O','P','Q','R',
+    'S','T','U','V','W','X','Y','Z','0',
+    '1','2','3','4','5','6','7','8','9',
+    '.','?',',','-','/'
+  };
   
-  const PROGMEM cwmsg[] = "DE D0MMY/6 CM98 BEACON"
+  
+  const PROGMEM char cwmsg[] = "DE D0MMY/6 CM98 BEACON";
+  
+  // come here from main via key line going low
+  for (i=0; i<len(cwmsg); i++) {
+    ch = toupper(cwmsg[i]);
+    for (n=0; n<len(chrstring); n++) {
+     if (ch == chrstring[n]) {
+       
 
 }
 */
