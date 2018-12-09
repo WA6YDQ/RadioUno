@@ -17,6 +17,6 @@ TODO:
 add a keyer (currently cw manual only right now);
 add cw beacon mode;
 try a different Si5351 library (limitations on the current one used);
-add a calibrate function;
+
 
 
