@@ -71,6 +71,9 @@
 * located in routine: Adafruit_SI5351::enableOutputs(bool enabled)
 * (the etherkit libs seem more suited for this - see github.com/etherkit/Si5351Arduino)
 *
+*
+* EEPROM address 1020, 1021 contain a calibrate offset in hz for the vfo
+* (determined from cal routine in menu)
 */
 
 /* Operation:
@@ -141,6 +144,7 @@ float XTAL = 25.0;     // Crystal frequency of PLL clock (MHz)
 unsigned int SIDETONE; // sidetone frequency for tone out and CW offset
 byte  radioReg;        // set radio filters, radio mode etc (for MCP23008)
 byte CWKEYER;          // set at startup 0=manual key, 1 = keyer paddles used
+int CALOFFSET;         // calibrate setting for +/- 0 hz
 
 #define MAXMODE 7    // set max number of modes
 int   MODE;
@@ -316,6 +320,8 @@ void changeFreq() {
    extern int menu_sel;    // determines menu selection
    long i;
    
+   if (vfoChan == 3) return; // in cal mode, vfochan == 3
+   
    delay(1);      // deal with debounce using cheap encoders
    if (digitalRead(knob) == HIGH) {
      interrupts();
@@ -395,6 +401,7 @@ void updateOsc() {
    extern int MODE;  // 0=LSB, 1=USB, 2=CW-L, 3=CW-U
    float VB, VALUE, DIV, VA, VINT;
    float rxFreq;  // rx freq is 4x freq +/- ssb/cw offset
+   extern int CALOFFSET;
    
    VB = 1000000.0;
    rxFreq=freq; // fix a bug until hdwr comes in
@@ -403,7 +410,9 @@ void updateOsc() {
    if (MODE == 1) rxFreq = freq; // USB
    if (MODE == 2) rxFreq = freq + (float)SIDETONE;    // CW-L
    if (MODE == 3) rxFreq = freq - (float)SIDETONE;    // CW-U
- 
+   
+   rxFreq += CALOFFSET;
+   
    rxFreq *= 4.0;      // using a tayloe detector, rx freq is 4X display freq
    VALUE = rxFreq/VB;
    DIV = XTAL * 40;    // MULTI for PLL B is 40 (below that osc output is jittery
@@ -524,41 +533,96 @@ tx = 0 for RX, 1 for TX
 
 
 
-/* MENU mode - set certain values, read DC voltage, etc */
+/* MENU mode - set certain values etc */
 void menu() {
   extern int vfoChan;
   extern int menu_sel;
+  extern int CALOFFSET;
+  float VALUE, DIV, VINT, VA, VB;
+  VB = 1000000.0;
   
   long i;         // general purpose counter
   vfoChan = 2;    // in menu mode
-  menu_sel = 0;   // select menu item
+  menu_sel = 0;   // select menu item #
   
   lcd1.home();
-  lcd1.print("Menu    ");
-  delay(750);
+  lcd1.print("Menu           ");
+  while (digitalRead(vc) == LOW){
+     delay(100);
+     continue;  // wait until vc released
+  }
+  delay(80);
+  lcd1.home();
+  lcd1.print("Select List        ");
+  delay(250);
   while (true) {
     
-    /* show dc voltage */
-    if (menu_sel == 0) { 
+    /* calibrate VFO */
+    if (menu_sel == 0) {
       lcd1.home();
-      lcd1.print("menu 0");
+      lcd1.print("Calibrate Osc        ");
       delay(200); 
+      CALOFFSET = 0;    // offset in Hz
+        if (digitalRead(vc) == LOW) {    // wait for press on vc
+          while (digitalRead(vc) == LOW) continue; // wait until vc is released
+          lcd1.clear();
+          lcd1.print("Rotate knob");
+          lcd1.setCursor(0,1);
+          lcd1.print(CALOFFSET);
+          vfoChan = 3;  // disable knob operation for menu selection
+          VALUE = (10000000.0 + CALOFFSET)/VB;  // 10mc + offset in hz
+          DIV = XTAL * MULTI; VALUE = DIV/VALUE; VINT = (long)VALUE; VA = (long)((VALUE - VINT) * VB);
+          clockgen.setupMultisynth(2, SI5351_PLL_A, VINT,VA,VB); // output on osc 2
+          while (true) {  // use knob to vary CALOFFSET
+            if ((digitalRead(knobDir) == HIGH) && (digitalRead(knob) == LOW)) {
+              CALOFFSET += 1;
+              VALUE = (10000000.0 + CALOFFSET)/VB;  // 10mc + offset in hz
+              DIV = XTAL * MULTI; VALUE = DIV/VALUE; VINT = (long)VALUE; VA = (long)((VALUE - VINT) * VB);
+              clockgen.setupMultisynth(2, SI5351_PLL_A, VINT,VA,VB); // output on osc 2
+              lcd1.setCursor(0,1);
+              lcd1.print(CALOFFSET);
+              lcd1.print(" hz       ");
+              while (digitalRead(knob) == 0) continue;
+            }
+            if ((digitalRead(knobDir) == LOW) && (digitalRead(knob) == LOW)) {
+              CALOFFSET -= 1;
+              VALUE = (10000000.0 + CALOFFSET)/VB;  // 10mc + offset in hz
+              DIV = XTAL * MULTI; VALUE = DIV/VALUE; VINT = (long)VALUE; VA = (long)((VALUE - VINT) * VB);
+              clockgen.setupMultisynth(2, SI5351_PLL_A, VINT,VA,VB); // output on osc 2
+              lcd1.setCursor(0,1);
+              lcd1.print(CALOFFSET);
+              lcd1.print(" hz       ");
+              while (digitalRead(knob) == 0) continue;
+            }
+            if (digitalRead(vc) == LOW) {    // vc pressed - save value to eeprom
+              EEPROM.write(1020, highByte(CALOFFSET));
+              EEPROM.write(1021, lowByte(CALOFFSET));
+              lcd1.clear();
+              lcd1.print("Offset Saved");
+              while(digitalRead(vc) == LOW) continue;
+              delay(80);
+              vfoChan = 2;  // re-enable knob for menu ops
+              break;
+            }
+          }
+        } 
       continue;
     }
+
     
     /* set default channels in EEPROM */
     if (menu_sel == 1) {
       while (menu_sel == 1) {
         lcd1.home();
-        lcd1.print("set default chan");
+        lcd1.print("set default chan ");
         if (digitalRead(vc) == 0) {
           delay(200);
           if (digitalRead(vc) == 0) {
             lcd1.home();
-            lcd1.print("working        ");
+            lcd1.print("working          ");
             setDefault();
             lcd1.home();
-            lcd1.print("done           ");
+            lcd1.print("done              ");
             while (digitalRead(vc) == 0) continue;
             delay(750);
           }
@@ -571,21 +635,21 @@ void menu() {
     /*  */
     if (menu_sel == 2) {
       lcd1.home();
-      lcd1.print("menu 2");
+      lcd1.print("menu 2           ");
       delay(200);
       continue;
     }
     
     if (menu_sel == 3) {
       lcd1.home();
-      lcd1.print("menu 3");
+      lcd1.print("menu 3           ");
       delay(200);
       continue;
   }
   
     if (menu_sel == 4) {
       lcd1.home();
-      lcd1.print("menu 4");
+      lcd1.print("menu 4           ");
       delay(200);
       continue;
      }
@@ -598,11 +662,13 @@ void menu() {
 void txKey() {  // key TX
   extern byte radioReg;
   extern float freq;
+  extern int CALOFFSET;
   float VALUE, DIV, VINT, VA, VB;
   VB = 1000000.0;
 
   // set up/change the transmit frequency
-  VALUE = freq/VB;    // tx freq is display freq, no offsets
+  
+  VALUE = (freq+CALOFFSET)/VB;    // tx freq is display freq, no offsets
   DIV = XTAL * MULTI;
   VALUE = DIV/VALUE;
   VINT = (long)VALUE;
@@ -670,6 +736,7 @@ void loop() {
    extern int MODE;
    int modeBak = 0;
    extern byte CWKEYER;
+   extern int CALOFFSET;
    
    
 /* if vfo/chan button (vc) is pressed during power-up, jump
@@ -697,6 +764,12 @@ void loop() {
    }
    
    /* initialize radio settings */
+   
+   int ByHi, ByLo;
+   ByHi = EEPROM.read(1020);    // retrieve caloffset bytes
+   ByLo = EEPROM.read(1021);
+   CALOFFSET = word(ByHi,ByLo);
+   
    MODE = 0;    // initial define until read from the EEPROM   
    SIDETONE = 700;   // set sidetone (and cw offset)
    vfoChan = 0;      // start in vfo mode (vfoChan = 0)
@@ -1071,6 +1144,11 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
      MODE = defaultMode[chan];
      Save();
   }
+  
+  // save init value (0) for vfo offset (set correct value from menu)
+  EEPROM.write(1020, highByte((int)0));
+  EEPROM.write(1021, lowByte((int)0));
+  
   // done
   return;
 }
@@ -1122,7 +1200,8 @@ const PROGMEM byte rdx[] = {   // note byte inplace of char
 
   int n;
   unsigned long time;
-
+  extern int CALOFFSET;
+  
   float shift = 12000.0/8192.0;
   //int txtime = (int)((float)((8192/12000)*1000.0));
   int txtime = 683;  // time in msec (actully 1/shift * 1000 (for msec))
