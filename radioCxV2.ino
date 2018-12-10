@@ -121,29 +121,29 @@ const int refIn = A3;      // dc reflected power input (used in transmit)
 const int vc = 3;          // pushbutton, vfo/channel and sto/rcl on D3
 const int keyIn1 = 11;     // key line (dot)  D11
 const int keyIn2 = 12;     // key line (dash) D12
-const int modesw = A2;     // Mode switch (menu long press)
+const int modesw = A2;     // Mode switch (RIT long press)
 
 
 const char *call = "D0MMY"; // WSPR Call Sign (change for your call)
 const char *grid = "CM98";  // WSPR grid square (change for your grid)
 //const int txpower = 15;   // WSPR power to antenna (set in wspr() routine)
 
-float VOLT;                // read DC Voltage on pin A0
-float freq;                // main frequency in Hz
-float freqBak;             // use this when in channel mode to hold the vfo freq
-float STEP = 10;           // step size when tuning (in Hz)
-int   FREQFLAG = 0;        // when HIGH update freq Display & Osc
-int   vfoChan = 0;         // 0=vfo, 1=chan, 2=menuMode
-int   chan = 0;            // channel number - 0-99
-int   menu_sel;            // used in menu sub-system
-float MULTI = 28.0;        // multiplier (* XTAL) for PLL (used in transmit pll only)
-float XTAL = 25.0;         // Crystal frequency of PLL clock (MHz)
-unsigned int SIDETONE;     // sidetone frequency for tone out and CW offset
-byte  radioReg;            // set radio filters, radio mode etc (for MCP23008)
-byte CWKEYER;              // set at startup 0=manual key, 1 = keyer paddles used
-int CALOFFSET;             // calibrate setting for +/- 0 hz
+float VOLT;                 // read DC Voltage on pin A0
+float freq;                 // main frequency in Hz
+float freqBak;              // use this when in channel mode to hold the vfo freq
+float STEP = 10;            // step size when tuning (in Hz)
+int   FREQFLAG = 0;         // when HIGH update freq Display & Osc
+int   vfoChan = 0;          // 0=vfo, 1=chan, 2=menuMode
+int   chan = 0;             // channel number - 0-99
+int   menu_sel;             // used in menu sub-system
+float MULTI = 28.0;         // multiplier (* XTAL) for PLL (used in transmit pll only)
+float XTAL = 25.0;          // Crystal frequency of PLL clock (MHz)
+unsigned int SIDETONE;      // sidetone frequency for tone out and CW offset
+byte  radioReg;             // set radio filters, radio mode etc (for MCP23008)
+byte CWKEYER;               // set at startup 1=manual key, 0=keyer paddles used
+int CALOFFSET;              // calibrate setting for +/- 0 hz
 
-#define MAXMODE 7          // set max number of modes
+#define MAXMODE 7           // set max number of modes
 int   MODE;
 const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","CW-B","WSPR","BECN"};
 
@@ -296,8 +296,6 @@ void updateDcVolt() {
   // dtostrf(float var,str len, digits after decimal point, var to hold val)
   dtostrf(VOLT,4,1,buf);  // arduino can't handle floats (WTF? it has a c compiler)
   // this stupid little routine takes >2K of memory!!
-  //lcd1.home();
-  //lcd1.print("DC");
   lcd1.setCursor(11,1);
   lcd1.print(buf);
   lcd1.setCursor(15,1);
