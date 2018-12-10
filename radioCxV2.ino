@@ -11,7 +11,7 @@
 *
 * k theis <theis.kurt@gmail.com> 11/2018
 *
-* Ver2 - has 16x2 LCD, a mode/menu button, a channel/vfo store/recall
+* Ver2 - has 16x2 LCD, a mode/RIT button, a channel/vfo store/recall
 * button, a rotary (mechanical) encoder with a button. The button steps
 * thru tuning steps from 10hz thru 100 khz depending on long or short pushes.
 *
@@ -29,6 +29,7 @@
 * to understand. As long as there is available memory, I keep it verbose.
 *
 * TODO: add keyer functions
+*       add RIT or split operation
 *       add beacon mode
 *       burst is mostly hardware - test if this mode is needed
 *       try a different Si5351 library (or write code to turn on/off indiv Si ports)
@@ -47,10 +48,9 @@
 * changeFreq()   Interrupt driven - read rotary encoder, change freq/channel/menu etc
 * updateOsc()    Read from freq and mode. Send display freq to osc0, derived rx to osc1
 * menu()         Menu sub-system. Control registers, run special functions
-* setDefault()   Initialize the EEPROM with default frequencies
-* wspr(freq)     Transmit WSPR on (freq) (called from menu, freq is pre-defined)
-*                Call and Grid are predefined before setup() is called. Power
-*                is defined in the wspr() routine.
+* setDefault()   Initialize the EEPROM with default frequencies & settings
+* wspr(freq)     Transmit WSPR on (freq) Call and Grid are predefined before setup() is called.
+*                Power level is defined in the wspr() routine.
 * txKey()        key the transmitter (send 1 to GP5 of the MCP23008), set Tx freq to display
 * txDekey()      dekey the transmitter (send 0 to GP5 of the MCP23008), shift Tx freq to 1 MHz
 * 
@@ -81,7 +81,7 @@
 *
 * If the MODE switch is pressed, the built-in keyer will be used for CW transmit.
 * If the MODE switch IS NOT pressed, the keyer will NOT be used and a manual key will be needed
-* to transmit CW.
+* to transmit CW. (Keyer not yet implimented)
 *
 * At start up, if the CHANNEL/VFO button is NOT pressed, the radio will act normally.
 * If the CHANNEL/VFO button IS pressed, you will jump into the MENU mode. This is used 
@@ -103,19 +103,17 @@
 #include <asserts.h>
 #include <Adafruit_SI5351.h>
 #include <errors.h>
-//#include <string.h>    // for wspr
-//#include <ctype.h>    // for wspr
 
-Adafruit_SI5351 clockgen = Adafruit_SI5351();
+Adafruit_SI5351 clockgen = Adafruit_SI5351();  // you will need to install the Adafruit Si5351 libs
 
 // lcd1 is Frequency Display (LCD D0 thru D3 are unused and left floating)
 LiquidCrystal lcd1(10,13,6,7,8,9);    // RS, e, D4, D5, D6, D7
-// (original version used 2 lcd displays)
+// (original version used 2 lcd displays, lcd1 and lcd2)
  
 /* define input lines (output lines are on the port expander, I2C & LCD)*/ 
-const int knobsw = 4;   // digital pin D4 (encoder switch) White wire on mine
-const int knob = 2;     // digital pin D2 (encoder pulse) Brown wire on mine
-const int knobDir = 5;  // digital pin D5 (encoder direction) Blue wire on mine
+const int knobsw = 4;      // digital pin D4 (encoder switch) White wire on mine
+const int knob = 2;        // digital pin D2 (encoder pulse) Brown wire on mine
+const int knobDir = 5;     // digital pin D5 (encoder direction) Blue wire on mine
 
 const int dcVoltage = A0;  // read dc voltage (thru 10K trimmer resistor) on A0
 const int toneOut = A1;    // audio tone out while in transmit on A1
@@ -126,26 +124,26 @@ const int keyIn2 = 12;     // key line (dash) D12
 const int modesw = A2;     // Mode switch (menu long press)
 
 
-const char *call = "D0MMY";  // WSPR Call Sign (change for your call)
-const char *grid = "CM98";   // WSPR grid square (change for your grid)
-//const int txpower = 15;    // WSPR power to antenna (set in wspr() routine)
+const char *call = "D0MMY"; // WSPR Call Sign (change for your call)
+const char *grid = "CM98";  // WSPR grid square (change for your grid)
+//const int txpower = 15;   // WSPR power to antenna (set in wspr() routine)
 
-float VOLT;            // read DC Voltage on pin A0
-float freq;            // main frequency in Hz
-float freqBak;         // use this when in channel mode to hold the vfo freq
-float STEP = 10;       // step size when tuning (in Hz)
-int   FREQFLAG = 0;    // when HIGH update freq Display & Osc
-int   vfoChan = 0;     // 0=vfo, 1=chan, 2=menuMode
-int   chan = 0;        // channel number - 0-99
-int   menu_sel;        // used in menu sub-system
-float MULTI = 28.0;    // multiplier (* XTAL) for PLL (used in transmit pll only)
-float XTAL = 25.0;     // Crystal frequency of PLL clock (MHz)
-unsigned int SIDETONE; // sidetone frequency for tone out and CW offset
-byte  radioReg;        // set radio filters, radio mode etc (for MCP23008)
-byte CWKEYER;          // set at startup 0=manual key, 1 = keyer paddles used
-int CALOFFSET;         // calibrate setting for +/- 0 hz
+float VOLT;                // read DC Voltage on pin A0
+float freq;                // main frequency in Hz
+float freqBak;             // use this when in channel mode to hold the vfo freq
+float STEP = 10;           // step size when tuning (in Hz)
+int   FREQFLAG = 0;        // when HIGH update freq Display & Osc
+int   vfoChan = 0;         // 0=vfo, 1=chan, 2=menuMode
+int   chan = 0;            // channel number - 0-99
+int   menu_sel;            // used in menu sub-system
+float MULTI = 28.0;        // multiplier (* XTAL) for PLL (used in transmit pll only)
+float XTAL = 25.0;         // Crystal frequency of PLL clock (MHz)
+unsigned int SIDETONE;     // sidetone frequency for tone out and CW offset
+byte  radioReg;            // set radio filters, radio mode etc (for MCP23008)
+byte CWKEYER;              // set at startup 0=manual key, 1 = keyer paddles used
+int CALOFFSET;             // calibrate setting for +/- 0 hz
 
-#define MAXMODE 7    // set max number of modes
+#define MAXMODE 7          // set max number of modes
 int   MODE;
 const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","CW-B","WSPR","BECN"};
 
@@ -174,28 +172,28 @@ void setup() {
    Wire.begin();
    
    /* initialize port-expander */
-   Wire.beginTransmission(0x20);  // select port expander
-   Wire.write(0x00);        // select IODIRA of port expander
-   Wire.write(0x00);        // PORT A all output
-   Wire.endTransmission();  // stop talking to port expander
+   Wire.beginTransmission(0x20);    // select port expander
+   Wire.write(0x00);                // select IODIRA of port expander
+   Wire.write(0x00);                // PORT A all output
+   Wire.endTransmission();          // stop talking to port expander
    
    /* initialize Si5351 oscillator */
    if (clockgen.begin() != ERROR_NONE) {
      lcd1.home();
-     lcd1.print("CLK ERR");    // if it doesn't start up, no reason to continue
-     while (true) continue;    // so loop until power cycled
+     lcd1.print("CLK ERR");        // if it doesn't start up, no reason to continue
+     while (true) continue;        // so loop until power cycled
    }
       
    /* set up PLL B for rx freq range (12-120 MHz) */
    clockgen.setupPLLInt(SI5351_PLL_B, 40);  // PLL B is 1000 MHz (noisy at 900MHz)
    /* set up PLL A for TX freq range (3-30 MHz) */
-   clockgen.setupPLLInt(SI5351_PLL_A, 28); // PLL A is 700 MHz
+   clockgen.setupPLLInt(SI5351_PLL_A, 28); // PLL A is 700 MHz (Using 25 MHz clock on Adafruit Si5351 breakout)
    /* turn on the outputs */
    clockgen.enableOutputs(true);
    
    /* set interrupts last */
    attachInterrupt(0, changeFreq, LOW);    // set interrupt on knob going LOW
-   interrupts();    // allow interrupts (normally defaults on)
+   interrupts();                           // allow interrupts (normally defaults on)
 }
  
  
@@ -207,11 +205,11 @@ void setup() {
  
  
  /**** show the current frequency ****/
-void updateFreq() {  // this is called from inside an interrupt - delays & I2C are disabled
+void updateFreq() {          // this is called from inside an interrupt - delays & I2C are disabled
    extern float freq;
    extern int vfoChan;
 
-   if (vfoChan == 1) {    // show channel number (ie CH 01 14250.50)
+   if (vfoChan == 1) {       // show channel number (ie CH 01 14250.50)
      lcd1.home();
      
      if (chan < 10) lcd1.print("CH 0");  // thats a '0' (zero)
@@ -290,7 +288,7 @@ void Recall() {
  
 /**** Display D.C. Voltage ****/
 void updateDcVolt() {
-  // read analog pin, divide by constant for true voltage
+  // read analog pin, divide by constant for true voltage (I use a 10k multiturn pot)
   extern float VOLT;
   char buf[5];
   //return;
@@ -336,14 +334,14 @@ void changeFreq() {
        for (i=0; i< 300000; i++);    // delay since delay() is off in ints   
      }
      
-     if (vfoChan == 0) {  // increment vfo freq
+     if (vfoChan == 0) {  // in vfo mode - increment vfo freq
        freq += STEP;
        if (freq > MAXFREQ) freq = MAXFREQ;  // freq limits
        FREQFLAG = 1;
        updateFreq(); 
      }
      
-     if (vfoChan == 1) {  // increment channel number
+     if (vfoChan == 1) {  // in channel mode - increment channel number
        chan += 1;
        if (chan > 99) chan = 99;
        Recall();  // read freq from EEPROM save in freq
@@ -352,7 +350,6 @@ void changeFreq() {
      }
      
      while (digitalRead(knob)==LOW) continue;
-     //for (i=0; i<2000; i++);  // delay
      interrupts();  // resume ints
      return;
    }
@@ -365,14 +362,14 @@ void changeFreq() {
        for (i=0; i< 300000; i++);    // delay since delay() is off in ints
      }
      
-     if (vfoChan == 0) {  // decrement vfo frequency
+     if (vfoChan == 0) {  // in vfo mode - decrement vfo frequency
        freq -= STEP;
        if (freq < MINFREQ) freq = MINFREQ;  // freq limits
        FREQFLAG = 1;
        updateFreq();
      }
      
-     if (vfoChan == 1) {  // decrement channel number
+     if (vfoChan == 1) {  // in channel mode - decrement channel number
        chan -= 1;
        if (chan < 0) chan = 0;
        Recall();      // get the EEPROM channel freq
@@ -381,18 +378,17 @@ void changeFreq() {
      }
      
      while (digitalRead(knob)==LOW) continue;
-     //for (i=0; i<2000; i++);  // delay
      interrupts();  // resume ints
      return;
    }
    
    interrupts();
-   return;    // nothing happend
+   return;    // nothing happend (shouldn't really get here)
 }
    
    
    
-/* update the si5351 oscillator for RX and TX */   
+/* update the si5351 oscillator for RX */   
 void updateOsc() {
 
    extern unsigned int SIDETONE;
@@ -409,6 +405,7 @@ void updateOsc() {
    if (MODE == 1) rxFreq = freq; // USB
    if (MODE == 2) rxFreq = freq + (float)SIDETONE;    // CW-L
    if (MODE == 3) rxFreq = freq - (float)SIDETONE;    // CW-U
+   if (MODE > 3)  rxFreq = freq; // all else
    
    rxFreq += CALOFFSET;
    
@@ -419,14 +416,6 @@ void updateOsc() {
    VINT = (long)VALUE;
    VA = (long)((VALUE - VINT) * VB);
    clockgen.setupMultisynth(1, SI5351_PLL_B, VINT, VA, VB);  // output on osc 1
-   
-   // set up the transmit frequency (moved to txKey() )
-   //VALUE = freq/VB;    // tx freq is display freq, no offsets
-   //DIV = XTAL * MULTI;
-   //VALUE = DIV/VALUE;
-   //VINT = (long)VALUE;
-   //VA = (long)((VALUE - VINT) * VB);
-   //clockgen.setupMultisynth(0, SI5351_PLL_A, VINT, VA, VB); // output on osc 0
    
    return;
 }
@@ -463,18 +452,11 @@ tx = 0 for RX, 1 for TX
     radioReg &= B00000111;    // clear current mode
     radioReg |= B01000000;    // set CW-USB  
   }
-  if (MODE == 4) {   // cw bcn/burst/wspr use USB
+  if (MODE >= 4) {   // cw bcn/burst/wspr use USB
     radioReg &= B00000111;    // clear current mode
     radioReg |= B11000000;    // set SSB-USB
   }
-  if (MODE == 5) {   // cw bcn/burst/wspr use USB
-    radioReg &= B00000111;    // clear current mode
-    radioReg |= B11000000;    // set SSB-USB
-  }
-  if (MODE == 6) {   // cw bcn/burst/wspr use USB
-    radioReg &= B00000111;    // clear current mode
-    radioReg |= B11000000;    // set SSB-USB
-  }
+
   
   Wire.beginTransmission(0x20);  // set up communication with port expander
   Wire.write(0x09);              // select GPIO pins
@@ -631,6 +613,7 @@ void menu() {
       continue;
     }
     
+    
     /*  */
     if (menu_sel == 2) {
       lcd1.home();
@@ -685,6 +668,8 @@ void txKey() {  // key TX
   
   return;
 }
+
+
 
 void txDekey() {   // unkey TX
   extern byte radioReg;
