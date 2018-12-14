@@ -1,6 +1,8 @@
 # RadioControlOsc
 Arduino controller for portable HF radio with Si5351 oscillator, WSPR, multiple channels, etc
 
+The .jpg file is the schematic of the controller as-built. This is my running version.
+
 This is an HF radio controller. It has the receive and transmit oscillators
 using an Si5351 programmable clock oscillator, an MCP23008 as a band register
 used to control the low pass filters, and using an Arduino ATmega328 processor.
