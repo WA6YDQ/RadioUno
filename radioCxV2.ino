@@ -336,18 +336,20 @@ void changeFreq() {
        freq += STEP;
        if (freq > MAXFREQ) freq = MAXFREQ;  // freq limits
        FREQFLAG = 1;
-       updateFreq(); 
+       //updateFreq(); 
      }
      
      if (vfoChan == 1) {  // in channel mode - increment channel number
        chan += 1;
        if (chan > 99) chan = 99;
        Recall();  // read freq from EEPROM save in freq
-       updateFreq();
+       //updateFreq();
        FREQFLAG = 1;
      }
      
+     
      while (digitalRead(knob)==LOW) continue;
+     for (i=0; i< 30000; i++);    // delay since delay() is off in ints
      interrupts();  // resume ints
      return;
    }
@@ -364,18 +366,20 @@ void changeFreq() {
        freq -= STEP;
        if (freq < MINFREQ) freq = MINFREQ;  // freq limits
        FREQFLAG = 1;
-       updateFreq();
+       //updateFreq();
      }
      
      if (vfoChan == 1) {  // in channel mode - decrement channel number
        chan -= 1;
        if (chan < 0) chan = 0;
        Recall();      // get the EEPROM channel freq
-       updateFreq();
+       //updateFreq();
        FREQFLAG = 1;
      }
      
+     
      while (digitalRead(knob)==LOW) continue;
+     for (i=0; i< 30000; i++);    // delay since delay() is off in ints
      interrupts();  // resume ints
      return;
    }
@@ -905,7 +909,7 @@ void loop() {
      
      
      if (FREQFLAG) {    // FLAG changed due to interrupt on knob rotation
-       //updateFreq() in knob routine (helps to slow down routine and stop glitches)
+       updateFreq();   //in knob routine (helps to slow down routine and stop glitches)
        updateMode();  // I2C CAN'T BE DONE IN INTERRUPT ROUTINES
        updateOsc();
        FREQFLAG = 0;
