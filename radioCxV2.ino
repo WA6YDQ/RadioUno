@@ -231,6 +231,7 @@ void updateFreq() {          // this is called from inside an interrupt - delays
    // now show the frequency 
    if ((freq/1000) < 10000) lcd1.print(" ");    // push display out, no leading 0
    lcd1.print(freq/1000);
+   lcd1.print(" ");    // clean up from channel display
    
    return;
 }
@@ -1030,7 +1031,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
      3413000,  // volmet Europe  ch 24
      5505000,  // volmet   ""    ch 25
      8957000,  // volmet   ""    ch 26
-    13264000,  // volmet   ""    ch 27
+    13270000,  // volmet   ""    ch 27
      5450000,  // volmet Europe  ch 28
     11253000,  // volmet   ""    ch 29
      4742000,  // volmet Europe  ch 30
