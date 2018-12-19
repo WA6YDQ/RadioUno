@@ -322,7 +322,7 @@ void changeFreq() {
    
    if (vfoChan == 3) return; // in cal mode, vfochan == 3
    
-   if ((FREQFLAG==1) && (vfoChan<2)) {  // wait until display updated before anything
+   if ((FREQFLAG==1) && (vfoChan<3)) {  // wait until display updated before continuing
        return;
    }
    
@@ -339,7 +339,8 @@ void changeFreq() {
      if (vfoChan == 2) {    // in menu sub-system
        menu_sel++;
        if (menu_sel > 4) menu_sel = 0;
-       for (i=0; i< 300000; i++);    // delay since delay() is off in ints   
+       FREQFLAG = 1;
+       //for (i=0; i< 250000; i++);    // delay since delay() is off in ints   
      }
      
      if (vfoChan == 0) {  // in vfo mode - increment vfo freq
@@ -355,10 +356,8 @@ void changeFreq() {
        FREQFLAG = 1;
      }
      
-     //for (i=0; i< 50000; i++);    // delay since delay() is off in ints
      while (digitalRead(knob)==LOW) continue;
      interrupts();  // resume ints
-     //delay(1);
      return;
    }
    
@@ -367,7 +366,8 @@ void changeFreq() {
      if (vfoChan == 2) {    // in menu sub-system
        menu_sel--;
        if (menu_sel < 0) menu_sel = 4;
-       for (i=0; i< 300000; i++);    // delay since delay() is off in ints
+       FREQFLAG = 1;
+       //for (i=0; i< 250000; i++);    // delay since delay() is off in ints
      }
      
      if (vfoChan == 0) {  // in vfo mode - decrement vfo frequency
@@ -383,10 +383,8 @@ void changeFreq() {
        FREQFLAG = 1;
      }
      
-     //for (i=0; i< 50000; i++);    // delay since delay() is off in ints
      while (digitalRead(knob)==LOW) continue;
      interrupts();  // resume ints
-     //delay(1);
      return;
    }
    
@@ -402,14 +400,14 @@ void updateOsc() {
 
    extern unsigned int SIDETONE;
    extern float freq, MULTI, XTAL;
-   //extern int MODE;  // 0=LSB, 1=USB, 2=CW-L, 3=CW-U
-   extern byte MODE;
+   //extern int MODE;  
+   extern byte MODE;   // 0=LSB, 1=USB, 2=CW-L, 3=CW-U
    float VB, VALUE, DIV, VA, VINT;
-   float rxFreq;  // rx freq is 4x freq +/- ssb/cw offset
+   float rxFreq;  // rx freq is 4x freq, +/- ssb/cw offset, +/- caloffset
    extern int CALOFFSET;
    
    VB = 1000000.0;
-   rxFreq=freq; // fix a bug until hdwr comes in
+   //rxFreq=freq; // fix a bug until hdwr comes in
    // set up the receive frequency (no offset for ssb needed with qrp-labs rx with poly)
    if (MODE == 0) rxFreq = freq; // LSB
    if (MODE == 1) rxFreq = freq; // USB
@@ -525,17 +523,23 @@ tx = 0 for RX, 1 for TX
 
 
 
+
+/**************************************/
 /* MENU mode - set certain values etc */
+/**************************************/
+
 void menu() {
   extern int vfoChan;
   extern int menu_sel;
   extern int CALOFFSET;
+  extern int FREQFLAG;
   float VALUE, DIV, VINT, VA, VB;
   VB = 1000000.0;
   
   long i;         // general purpose counter
   vfoChan = 2;    // in menu mode
   menu_sel = 0;   // select menu item #
+  FREQFLAG = 0;
   
   lcd1.home();
   lcd1.print("Menu           ");
@@ -546,14 +550,20 @@ void menu() {
   delay(80);
   lcd1.home();
   lcd1.print("Select List        ");
-  delay(250);
+  delay(450);
+  FREQFLAG = 1;
+  
+  /**** menu loop ****/
   while (true) {
     
     /* calibrate VFO */
     if (menu_sel == 0) {
-      lcd1.home();
-      lcd1.print("Calibrate Osc        ");
-      delay(200); 
+      if (FREQFLAG == 1) {
+          lcd1.home();
+          lcd1.print("Calibrate Osc        ");
+          FREQFLAG = 0;
+      }
+      //delay(200); 
       CALOFFSET = 0;    // offset in Hz
         if (digitalRead(vc) == LOW) {    // wait for press on vc
           while (digitalRead(vc) == LOW) continue; // wait until vc is released
@@ -604,48 +614,65 @@ void menu() {
     
     /* set default channels in EEPROM */
     if (menu_sel == 1) {
-      while (menu_sel == 1) {
-        lcd1.home();
-        lcd1.print("set default chan ");
+        if (FREQFLAG == 1) {
+            lcd1.home();
+            lcd1.print("set default chan ");
+            FREQFLAG = 0;
+        }
         if (digitalRead(vc) == 0) {
-          delay(200);
+          delay(100);
           if (digitalRead(vc) == 0) {
             lcd1.home();
-            lcd1.print("working          ");
+            lcd1.print("writing          ");
+            while (digitalRead(vc) == 0) continue;
+            FREQFLAG = 1;
             setDefault();
+            FREQFLAG = 0;
             lcd1.home();
             lcd1.print("done              ");
-            while (digitalRead(vc) == 0) continue;
             delay(750);
+            FREQFLAG = 1; // to redraw menu choice
           }
         }
-      }
-      delay(250);
+      delay(50);
       continue;
     }
     
     
     /*  */
     if (menu_sel == 2) {
-      lcd1.home();
-      lcd1.print("menu 2           ");
-      delay(200);
+      if (FREQFLAG == 1) {
+          lcd1.home();
+          lcd1.print("menu 2           ");
+          FREQFLAG = 0;
+      }
+      delay(50);
       continue;
     }
     
     if (menu_sel == 3) {
-      lcd1.home();
-      lcd1.print("menu 3           ");
-      delay(200);
+      if (FREQFLAG == 1) {
+          lcd1.home();
+          lcd1.print("menu 3           ");
+          FREQFLAG = 0;
+      }
+      delay(50);
       continue;
   }
   
     if (menu_sel == 4) {
-      lcd1.home();
-      lcd1.print("menu 4           ");
-      delay(200);
+      if (FREQFLAG == 1) {
+          lcd1.home();
+          lcd1.print("menu 4           ");
+          FREQFLAG = 0;
+      }
+      delay(50);
       continue;
      }
+     
+   FREQFLAG = 1;
+   delay(10);
+   FREQFLAG = 0;
    
   }
    
