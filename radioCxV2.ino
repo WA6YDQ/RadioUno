@@ -96,6 +96,9 @@
 #define MAXFREQ 16100000    // highest operating frequency (hz)
 #define CalLow 510          // Address for calibrate eeprom storage
 #define CalHi  511          //    ""    ""     ""      ""     ""
+#define SidetoneLow 508
+#define SidetoneHi  509
+
 
 #include <LiquidCrystal.h>
 #include <stdlib.h>
@@ -135,7 +138,7 @@ float freqBak;              // use this when in channel mode to hold the vfo fre
 float STEP = 10;            // step size when tuning (in Hz)
 int   FREQFLAG = 0;         // when HIGH update freq Display & Osc
 int   vfoChan = 0;          // 0=vfo, 1=chan, 2=menuMode
-int   chan = 0;             // channel number - 0-99
+byte  chan = 0;             // channel number - 0-99
 int   menu_sel;             // used in menu sub-system
 float MULTI = 28.0;         // multiplier (* XTAL) for PLL (used in transmit pll only)
 float XTAL = 25.0;          // Crystal frequency of PLL clock (MHz)
@@ -145,7 +148,6 @@ byte CWKEYER;               // set at startup 1=manual key, 0=keyer paddles used
 int CALOFFSET;              // calibrate setting for +/- 0 hz
 
 #define MAXMODE 7           // set max number of modes
-//int   MODE;
 byte MODE;
 const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","CW-B","WSPR","BECN"};
 
@@ -182,7 +184,7 @@ void setup() {
    /* initialize Si5351 oscillator */
    if (clockgen.begin() != ERROR_NONE) {
      lcd1.home();
-     lcd1.print("CLK ERR");        // if it doesn't start up, no reason to continue
+     lcd1.print(F("CLK ERR"));        // if it doesn't start up, no reason to continue
      while (true) continue;        // so loop until power cycled
    }
       
@@ -214,26 +216,26 @@ void updateFreq() {          // this is called from inside an interrupt - delays
    if (vfoChan == 1) {       // show channel number (ie CH 01 14250.50)
      lcd1.home();
      
-     if (chan < 10) lcd1.print("CH 0");  // thats a '0' (zero)
-     if (chan > 9) lcd1.print("CH ");
+     if (chan < 10) lcd1.print(F("CH 0"));  // thats a '0' (zero)
+     if (chan > 9) lcd1.print(F("CH "));
      lcd1.print(chan);
-     lcd1.print(" ");
+     lcd1.print(F(" "));
      // now show the frequency
    }
    
    if (vfoChan == 0) {    // show frequency of VFO (ie VF 01 14250.00)
      lcd1.home();
      
-     if (chan < 10) lcd1.print("VF 0");  // thats a '0' (zero), not an O (oh)
-     if (chan > 9) lcd1.print("VF ");
+     if (chan < 10) lcd1.print(F("VF 0"));  // thats a '0' (zero), not an O (oh)
+     if (chan > 9) lcd1.print(F("VF "));
      lcd1.print(chan);
-     lcd1.print(" ");
+     lcd1.print(F(" "));
    }
    
    // now show the frequency 
-   if ((freq/1000) < 10000) lcd1.print(" ");    // push display out, no leading 0
+   if ((freq/1000) < 10000) lcd1.print(F(" "));    // push display out, no leading 0
    lcd1.print(freq/1000);
-   lcd1.print(" ");    // clean up from channel display
+   lcd1.print(F(" "));    // clean up from channel display
    
    return;
 }
@@ -245,8 +247,7 @@ void updateFreq() {          // this is called from inside an interrupt - delays
 /**** Save vfo frequency to EEPROM ****/
 void Save() {
   extern float freq;
-  extern int chan;
-  //extern int MODE;
+  extern byte chan;
   extern byte MODE;
   int i;
   int address = chan * 5;  // store freq as (4 byte) long, mode as 1 byte
@@ -269,8 +270,7 @@ void Save() {
 /*** Read from EEPROM to freq ****/  
 void Recall() {
   extern float freq;
-  extern int chan;
-  //extern int MODE;
+  extern byte chan;
   extern byte MODE;
   int i;
   int address = chan * 5;  // recall freq as 4 byte values, mode as 1 byte
@@ -296,7 +296,7 @@ void updateDcVolt() {
   // read analog pin, divide by constant for true voltage (I use a 10k multiturn pot)
   extern float VOLT;
   char buf[5];
-  //return;
+
   VOLT = analogRead(dcVoltage)/42.0;    // read DC voltage (use a float here)
   // dtostrf(float var,str len, digits after decimal point, var to hold val)
   dtostrf(VOLT,4,1,buf);  // arduino can't handle floats (WTF? it has a c compiler)
@@ -318,9 +318,8 @@ void changeFreq() {
    extern float freq;
    extern int FREQFLAG;
    extern int menu_sel;    // determines menu selection
-   long i;
    
-   if (vfoChan == 3) return; // in cal mode, vfochan == 3
+   if (vfoChan == 3) return; // in cal/sidetone mode, vfochan = 3
    
    if ((FREQFLAG==1) && (vfoChan<3)) {  // wait until display updated before continuing
        return;
@@ -339,8 +338,7 @@ void changeFreq() {
      if (vfoChan == 2) {    // in menu sub-system
        menu_sel++;
        if (menu_sel > 4) menu_sel = 0;
-       FREQFLAG = 1;
-       //for (i=0; i< 250000; i++);    // delay since delay() is off in ints   
+       FREQFLAG = 1;  
      }
      
      if (vfoChan == 0) {  // in vfo mode - increment vfo freq
@@ -367,7 +365,6 @@ void changeFreq() {
        menu_sel--;
        if (menu_sel < 0) menu_sel = 4;
        FREQFLAG = 1;
-       //for (i=0; i< 250000; i++);    // delay since delay() is off in ints
      }
      
      if (vfoChan == 0) {  // in vfo mode - decrement vfo frequency
@@ -399,15 +396,15 @@ void changeFreq() {
 void updateOsc() {
 
    extern unsigned int SIDETONE;
-   extern float freq, MULTI, XTAL;
-   //extern int MODE;  
+   extern float freq, XTAL;  
    extern byte MODE;   // 0=LSB, 1=USB, 2=CW-L, 3=CW-U
    float VB, VALUE, DIV, VA, VINT;
    float rxFreq;  // rx freq is 4x freq, +/- ssb/cw offset, +/- caloffset
    extern int CALOFFSET;
    
+   rxFreq = 0;
    VB = 1000000.0;
-   //rxFreq=freq; // fix a bug until hdwr comes in
+   
    // set up the receive frequency (no offset for ssb needed with qrp-labs rx with poly)
    if (MODE == 0) rxFreq = freq; // LSB
    if (MODE == 1) rxFreq = freq; // USB
@@ -430,7 +427,6 @@ void updateOsc() {
 
 void updateMode() {
   extern byte radioReg;
-  //extern int MODE;
   extern byte MODE;
 /* 
     |   7  |   6   |   5  |  4  |  3  |   2   |   1  |   0  |
@@ -536,20 +532,21 @@ void menu() {
   float VALUE, DIV, VINT, VA, VB;
   VB = 1000000.0;
   
-  long i;         // general purpose counter
   vfoChan = 2;    // in menu mode
   menu_sel = 0;   // select menu item #
   FREQFLAG = 0;
+  extern unsigned int SIDETONE;
+  SIDETONE = 700;
   
   lcd1.home();
-  lcd1.print("Menu           ");
+  lcd1.print(F("Menu           "));
   while (digitalRead(vc) == LOW){
      delay(100);
      continue;  // wait until vc released
   }
   delay(80);
   lcd1.home();
-  lcd1.print("Select List        ");
+  lcd1.print(F("Select List        "));
   delay(450);
   FREQFLAG = 1;
   
@@ -560,15 +557,14 @@ void menu() {
     if (menu_sel == 0) {
       if (FREQFLAG == 1) {
           lcd1.home();
-          lcd1.print("Calibrate Osc        ");
+          lcd1.print(F("Calibrate Osc        "));
           FREQFLAG = 0;
       }
-      //delay(200); 
       CALOFFSET = 0;    // offset in Hz
         if (digitalRead(vc) == LOW) {    // wait for press on vc
           while (digitalRead(vc) == LOW) continue; // wait until vc is released
           lcd1.clear();
-          lcd1.print("Rotate knob");
+          lcd1.print(F("Rotate knob"));
           lcd1.setCursor(0,1);
           lcd1.print(CALOFFSET);
           vfoChan = 3;  // disable knob operation for menu selection
@@ -583,7 +579,7 @@ void menu() {
               clockgen.setupMultisynth(2, SI5351_PLL_A, VINT,VA,VB); // output on osc 2
               lcd1.setCursor(0,1);
               lcd1.print(CALOFFSET);
-              lcd1.print(" hz       ");
+              lcd1.print(F(" hz       "));
               while (digitalRead(knob) == 0) continue;
             }
             if ((digitalRead(knobDir) == LOW) && (digitalRead(knob) == LOW)) {
@@ -593,14 +589,14 @@ void menu() {
               clockgen.setupMultisynth(2, SI5351_PLL_A, VINT,VA,VB); // output on osc 2
               lcd1.setCursor(0,1);
               lcd1.print(CALOFFSET);
-              lcd1.print(" hz       ");
+              lcd1.print(F(" hz       "));
               while (digitalRead(knob) == 0) continue;
             }
             if (digitalRead(vc) == LOW) {    // vc pressed - save value to eeprom
               EEPROM.write(CalLow, highByte(CALOFFSET));
               EEPROM.write(CalHi, lowByte(CALOFFSET));
               lcd1.clear();
-              lcd1.print("Offset Saved");
+              lcd1.print(F("Offset Saved"));
               while(digitalRead(vc) == LOW) continue;
               delay(80);
               vfoChan = 2;  // re-enable knob for menu ops
@@ -616,20 +612,19 @@ void menu() {
     if (menu_sel == 1) {
         if (FREQFLAG == 1) {
             lcd1.home();
-            lcd1.print("set default chan ");
+            lcd1.print(F("set defaults  "));
             FREQFLAG = 0;
         }
         if (digitalRead(vc) == 0) {
           delay(100);
           if (digitalRead(vc) == 0) {
             lcd1.home();
-            lcd1.print("writing          ");
-            while (digitalRead(vc) == 0) continue;
-            FREQFLAG = 1;
+            lcd1.print(F("writing       "));
+            while (digitalRead(vc) == LOW) continue;
+            delay(50);
             setDefault();
-            FREQFLAG = 0;
             lcd1.home();
-            lcd1.print("done              ");
+            lcd1.print(F("done           "));
             delay(750);
             FREQFLAG = 1; // to redraw menu choice
           }
@@ -639,13 +634,58 @@ void menu() {
     }
     
     
-    /*  */
+    /* set sidetone freq */
     if (menu_sel == 2) {
       if (FREQFLAG == 1) {
           lcd1.home();
-          lcd1.print("menu 2           ");
+          lcd1.print(F("Sidetone    "));
           FREQFLAG = 0;
       }
+      if (digitalRead(vc) == 0) {
+          delay(100);
+          if (digitalRead(vc) == 0) {
+              tone(toneOut, SIDETONE); 
+              vfoChan = 3;
+              lcd1.home();
+              lcd1.print(F("Rotate Knob   "));
+              lcd1.setCursor(0,1);
+              lcd1.print(SIDETONE);
+              while (digitalRead(vc) == 0) continue;
+              delay(50);
+              while(digitalRead(vc)==1) {
+                  if ((digitalRead(knobDir) == HIGH) && (digitalRead(knob) == LOW)) {
+                      SIDETONE += 1;
+                      if (SIDETONE >= 1000) SIDETONE = 1000;
+                      while (digitalRead(knob) == LOW) continue;
+                      FREQFLAG = 1;
+                  }
+                  if ((digitalRead(knobDir) == LOW) && (digitalRead(knob) == LOW)) {
+                      SIDETONE -= 1;
+                      if (SIDETONE <= 500) SIDETONE = 500;
+                      while (digitalRead(knob) == LOW) continue;
+                      FREQFLAG = 1;
+                  }
+                  if (FREQFLAG == 1) {
+                      tone(toneOut, SIDETONE); 
+                      lcd1.setCursor(0,1);
+                      lcd1.print(SIDETONE);
+                      lcd1.print(F("  "));    // remove trailing zero at 1000 hz
+                      FREQFLAG = 0;
+                  }
+              }
+              while (digitalRead(vc) == 0) continue;
+              delay(50);
+              noTone(toneOut);
+              /* now save to eeprom */
+              EEPROM.write(SidetoneLow, highByte(SIDETONE));
+              EEPROM.write(SidetoneHi, lowByte(SIDETONE));
+              lcd1.clear();
+              lcd1.print(F("Saved Value   "));
+              delay(700);
+              FREQFLAG = 1;    // to redraw display
+          }
+      }
+      vfoChan = 2;  // back to menu mode
       delay(50);
       continue;
     }
@@ -653,7 +693,7 @@ void menu() {
     if (menu_sel == 3) {
       if (FREQFLAG == 1) {
           lcd1.home();
-          lcd1.print("menu 3           ");
+          lcd1.print(F("menu 3           "));
           FREQFLAG = 0;
       }
       delay(50);
@@ -663,7 +703,7 @@ void menu() {
     if (menu_sel == 4) {
       if (FREQFLAG == 1) {
           lcd1.home();
-          lcd1.print("menu 4           ");
+          lcd1.print(F("menu 4           "));
           FREQFLAG = 0;
       }
       delay(50);
@@ -747,16 +787,11 @@ void loop() {
    float tempfreq;
    extern int FREQFLAG;    // 0 if no freq update, 1 if freq updated
    extern float STEP;      // tune step size in hz
-   extern float VOLT;      // dc battery voltage read on pin A0
    int freqMSB;            // frequency MSB (use for band register)
    extern unsigned int SIDETONE;
    int refVoltage;         // reflected voltage displayed during transmit
-   int SBCWVAL;            // used to detect ssb/cw switch change
-   int USBLSBVAL;          // used to detect usb/lsb switch change
    int i,x;                // misc variable
-   extern byte radioReg;
    long voltLoop = 0;      // timing loop to show DC voltage updates every 5 seconds
-   //extern int MODE;
    extern byte MODE;
    int modeBak = 0;
    extern byte CWKEYER;
@@ -779,13 +814,13 @@ void loop() {
    CWKEYER = digitalRead(modesw); // default is 1 - manual active.
    if (CWKEYER == 0) {
      lcd1.home();
-     lcd1.print("CW KEYER AUTO");
+     lcd1.print(F("CW KEYER AUTO"));
    }
    while (digitalRead(modesw) == 0) continue;   
    // if modesw pressed at startup (active 0), use auto key for CW operation.
    if (CWKEYER == 0) {
      lcd1.home();
-     lcd1.print("               ");  // clear just displayed message
+     lcd1.print(F("               "));  // clear just displayed message
    }
    
    /*****************************/
@@ -798,8 +833,13 @@ void loop() {
    CALOFFSET = word(ByHi,ByLo);
    if ((CALOFFSET > 3000) || (CALOFFSET < -3000)) CALOFFSET = 0; // assume eeprom corruption
    
+   /* get sidetone from eeprom */
+   ByHi = EEPROM.read(SidetoneLow);
+   ByLo = EEPROM.read(SidetoneHi);
+   SIDETONE = word(ByHi,ByLo);
+   if ((SIDETONE > 1000) || (SIDETONE < 500)) SIDETONE = 700;  // assume not set or eeprom corrupted
+   
    MODE = 0;         // initial define until read from the EEPROM   
-   SIDETONE = 700;   // set sidetone (and cw offset)
    vfoChan = 0;      // start in vfo mode (vfoChan = 0)
    chan = 0;  
    Recall();         // read EEPROM from channel 0, set as vfo frequency/mode
@@ -826,10 +866,7 @@ void loop() {
      /* test knob switch - change step size based on long/short push */
      if (digitalRead(knobsw) == LOW) {
         if (vfoChan == 1) {  // channel mode - do nothing
-          //vfoChan = 0; updateFreq();
-          //updateOsc();
           while (digitalRead(knobsw) == LOW) continue;
-          //vfoChan = 1; updateFreq(); updateOsc();
           delay(20);
           continue;
         }
@@ -855,7 +892,7 @@ void loop() {
           delay(20);    // debounce after the fact 
           continue; 
         }
-        //delay(150);  // add a little delay for a longer press
+
         if (digitalRead(knobsw) == LOW) {  // long press - tune 10K or 100K
           while (digitalRead(knobsw) == LOW){
             delay(20);    // stops falsing
@@ -915,10 +952,10 @@ void loop() {
           if (vfoChan == 0) {  // in vfo mode, save to EEPROM
             Save();    // save vfo to current channel number
             lcd1.home();
-            if (chan < 10) lcd1.print("Saved 0");  // show channel number w/leading 0
-            if (chan > 9) lcd1.print("Saved ");    // show 2 digit channel number
+            if (chan < 10) lcd1.print(F("Saved 0"));  // show channel number w/leading 0
+            if (chan > 9) lcd1.print(F("Saved "));    // show 2 digit channel number
             lcd1.print(chan);
-            lcd1.print("          ");
+            lcd1.print(F("          "));
             while (digitalRead(vc) == LOW)
               continue;
             delay(700);
@@ -1029,10 +1066,8 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   // NOTE: this is ONLY called to initialize the EEPROM
   // (and may not be called at all - user's choice)
   extern float freq;
-  extern int chan;
-  //extern int MODE;
-  extern byte mode;
-  int i;    // counter
+  extern byte chan;
+  extern byte MODE;
   
   // EEPROM storage: frequency (4 bytes), mode (1 byte)
   // format: 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband, 4=Burst, 5=WSPR, 6=BEACON
@@ -1153,13 +1188,13 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   /* set the mode for the memory channels */
   // 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband, 4=Burst, 5=WSPR, 6=BEACON
   
-  const PROGMEM int defaultMode[100] = {
+  const PROGMEM byte defaultMode[100] = {
     3,3,3,3,3,          // ch 00 - 04 
     0,0,1,5,5,5,5,      // ch 05 - 11
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 12 - 25
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 26 - 50
     1,1,1,1,1,1,1,1,1,1,  // 51 - 60
-    0,0,0,0,0,         // 61 - 65
+    1,1,1,1,1,         // 61 - 65 (usb)
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 66 - 80
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1   // 81 - 99
   };
@@ -1167,16 +1202,20 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   
   // now load these channels in EEPROM
   MODE = 1;  // defaults to USB
-  for (i=0; i<100; i++) { // includes ch 00
-     chan = i;
+  for (chan=0; chan<100; chan++) { // includes ch 00
      freq = defaultFreq[chan];
      MODE = defaultMode[chan];
      Save();
   }
   
+
   // save init value (0) for vfo offset (you need to set correct value from menu)
-  EEPROM.write(CalLow, highByte((int)0));
-  EEPROM.write(CalHi, lowByte((int)0));
+  EEPROM.write(CalLow, lowByte((int)0));
+  EEPROM.write(CalHi, highByte((int)0));
+  
+  // save init sidetone value
+  EEPROM.write(SidetoneHi, highByte((int)700));
+  EEPROM.write(SidetoneLow, lowByte((int)700));
   
   // done
   return;
@@ -1229,7 +1268,6 @@ const PROGMEM byte rdx[] = {   // note byte inplace of char
 
   int n;
   unsigned long time;
-  extern int CALOFFSET;
   
   float shift = 12000.0/8192.0;
   //int txtime = (int)((float)((8192/12000)*1000.0));
@@ -1278,7 +1316,7 @@ const PROGMEM byte rdx[] = {   // note byte inplace of char
     /* we have the 162 byte code in msg[], send it */
     
   lcd1.home();
-  lcd1.print("Sending          ");
+  lcd1.print(F("Sending          "));
   
   for (i=0; i<162; i++) {
     n = msg[i]; 
