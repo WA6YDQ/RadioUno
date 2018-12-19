@@ -35,7 +35,7 @@
 *       try a different Si5351 library (or write code to turn on/off indiv Si ports)
 *       put WSPR power variable at beginning of code, not WSPR routine
 */
-
+            
 /* Subroutines:
 * 
 * updateBand()   look at current frequency, send filter data to port expander
@@ -318,11 +318,16 @@ void changeFreq() {
    
    if (vfoChan == 3) return; // in cal mode, vfochan == 3
    
+   if ((FREQFLAG==1) && (vfoChan<2)) {  // wait until display updated before anything
+       return;
+   }
+   
    delay(1);      // deal with debounce using cheap encoders
    if (digitalRead(knob) == HIGH) {
      interrupts();
      return;
    }
+   
    noInterrupts();  // stop further ints while in this routine
    
    if ((digitalRead(knobDir) == HIGH) && (digitalRead(knob) == LOW)) {
@@ -337,21 +342,19 @@ void changeFreq() {
        freq += STEP;
        if (freq > MAXFREQ) freq = MAXFREQ;  // freq limits
        FREQFLAG = 1;
-       //updateFreq(); 
      }
      
      if (vfoChan == 1) {  // in channel mode - increment channel number
        chan += 1;
        if (chan > 99) chan = 99;
        Recall();  // read freq from EEPROM save in freq
-       //updateFreq();
        FREQFLAG = 1;
      }
      
-     
+     for (i=0; i< 50000; i++);    // delay since delay() is off in ints
      while (digitalRead(knob)==LOW) continue;
-     for (i=0; i< 30000; i++);    // delay since delay() is off in ints
      interrupts();  // resume ints
+     delay(1);
      return;
    }
    
@@ -367,25 +370,24 @@ void changeFreq() {
        freq -= STEP;
        if (freq < MINFREQ) freq = MINFREQ;  // freq limits
        FREQFLAG = 1;
-       //updateFreq();
      }
      
      if (vfoChan == 1) {  // in channel mode - decrement channel number
        chan -= 1;
        if (chan < 0) chan = 0;
        Recall();      // get the EEPROM channel freq
-       //updateFreq();
        FREQFLAG = 1;
      }
      
-     
+     for (i=0; i< 50000; i++);    // delay since delay() is off in ints
      while (digitalRead(knob)==LOW) continue;
-     for (i=0; i< 30000; i++);    // delay since delay() is off in ints
      interrupts();  // resume ints
+     delay(1);
      return;
    }
    
    interrupts();
+   delay(1);
    return;    // nothing happend (shouldn't really get here)
 }
    
@@ -910,8 +912,8 @@ void loop() {
      
      
      if (FREQFLAG) {    // FLAG changed due to interrupt on knob rotation
-       updateFreq();   //in knob routine (helps to slow down routine and stop glitches)
-       updateMode();  // I2C CAN'T BE DONE IN INTERRUPT ROUTINES
+       updateFreq();    // change freq
+       updateMode();    // I2C CAN'T BE DONE IN INTERRUPT ROUTINES
        updateOsc();
        FREQFLAG = 0;
      }
