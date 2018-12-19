@@ -94,7 +94,8 @@
 
 #define MINFREQ  2900000    // lowest operating frequency (hz)
 #define MAXFREQ 16100000    // highest operating frequency (hz)
-
+#define CalLow 510          // Address for calibrate eeprom storage
+#define CalHi  511          //    ""    ""     ""      ""     ""
 
 #include <LiquidCrystal.h>
 #include <stdlib.h>
@@ -144,7 +145,8 @@ byte CWKEYER;               // set at startup 1=manual key, 0=keyer paddles used
 int CALOFFSET;              // calibrate setting for +/- 0 hz
 
 #define MAXMODE 7           // set max number of modes
-int   MODE;
+//int   MODE;
+byte MODE;
 const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","CW-B","WSPR","BECN"};
 
 
@@ -244,7 +246,8 @@ void updateFreq() {          // this is called from inside an interrupt - delays
 void Save() {
   extern float freq;
   extern int chan;
-  extern int MODE;
+  //extern int MODE;
+  extern byte MODE;
   int i;
   int address = chan * 5;  // store freq as (4 byte) long, mode as 1 byte
   union u_tag
@@ -267,7 +270,8 @@ void Save() {
 void Recall() {
   extern float freq;
   extern int chan;
-  extern int MODE;
+  //extern int MODE;
+  extern byte MODE;
   int i;
   int address = chan * 5;  // recall freq as 4 byte values, mode as 1 byte
   union u_tag
@@ -351,10 +355,10 @@ void changeFreq() {
        FREQFLAG = 1;
      }
      
-     for (i=0; i< 50000; i++);    // delay since delay() is off in ints
+     //for (i=0; i< 50000; i++);    // delay since delay() is off in ints
      while (digitalRead(knob)==LOW) continue;
      interrupts();  // resume ints
-     delay(1);
+     //delay(1);
      return;
    }
    
@@ -379,10 +383,10 @@ void changeFreq() {
        FREQFLAG = 1;
      }
      
-     for (i=0; i< 50000; i++);    // delay since delay() is off in ints
+     //for (i=0; i< 50000; i++);    // delay since delay() is off in ints
      while (digitalRead(knob)==LOW) continue;
      interrupts();  // resume ints
-     delay(1);
+     //delay(1);
      return;
    }
    
@@ -398,7 +402,8 @@ void updateOsc() {
 
    extern unsigned int SIDETONE;
    extern float freq, MULTI, XTAL;
-   extern int MODE;  // 0=LSB, 1=USB, 2=CW-L, 3=CW-U
+   //extern int MODE;  // 0=LSB, 1=USB, 2=CW-L, 3=CW-U
+   extern byte MODE;
    float VB, VALUE, DIV, VA, VINT;
    float rxFreq;  // rx freq is 4x freq +/- ssb/cw offset
    extern int CALOFFSET;
@@ -427,7 +432,8 @@ void updateOsc() {
 
 void updateMode() {
   extern byte radioReg;
-  extern int MODE;
+  //extern int MODE;
+  extern byte MODE;
 /* 
     |   7  |   6   |   5  |  4  |  3  |   2   |   1  |   0  |
      cw/ssb usb/lsb    tx               11-15   8-11    4-8
@@ -581,8 +587,8 @@ void menu() {
               while (digitalRead(knob) == 0) continue;
             }
             if (digitalRead(vc) == LOW) {    // vc pressed - save value to eeprom
-              EEPROM.write(1020, highByte(CALOFFSET));
-              EEPROM.write(1021, lowByte(CALOFFSET));
+              EEPROM.write(CalLow, highByte(CALOFFSET));
+              EEPROM.write(CalHi, lowByte(CALOFFSET));
               lcd1.clear();
               lcd1.print("Offset Saved");
               while(digitalRead(vc) == LOW) continue;
@@ -676,7 +682,7 @@ void txKey() {  // key TX
 
 
 
-void txDekey() {   // unkey TX
+void txDekey() {   // unkey TX, set power on for osc 0 and 2
   extern byte radioReg;
   float VALUE, DIV, VINT, VA, VB;
   VB = 1000000;
@@ -695,6 +701,7 @@ void txDekey() {   // unkey TX
   VINT = (long)VALUE;
   VA = (long)((VALUE - VINT) * VB);
   clockgen.setupMultisynth(0, SI5351_PLL_A, VINT, VA, VB); // output on osc 0
+  clockgen.setupMultisynth(2, SI5351_PLL_A, VINT, VA, VB); // output on osc 2
   
   lcd1.setCursor(15,0);
   lcd1.write("R");  // show rx mode
@@ -722,7 +729,8 @@ void loop() {
    int i,x;                // misc variable
    extern byte radioReg;
    long voltLoop = 0;      // timing loop to show DC voltage updates every 5 seconds
-   extern int MODE;
+   //extern int MODE;
+   extern byte MODE;
    int modeBak = 0;
    extern byte CWKEYER;
    extern int CALOFFSET;
@@ -758,8 +766,8 @@ void loop() {
    /*****************************/
    
    int ByHi, ByLo;
-   ByHi = EEPROM.read(1020);    // retrieve caloffset bytes
-   ByLo = EEPROM.read(1021);
+   ByHi = EEPROM.read(CalLow);    // retrieve caloffset bytes
+   ByLo = EEPROM.read(CalHi);
    CALOFFSET = word(ByHi,ByLo);
    if ((CALOFFSET > 3000) || (CALOFFSET < -3000)) CALOFFSET = 0; // assume eeprom corruption
    
@@ -995,14 +1003,15 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   // (and may not be called at all - user's choice)
   extern float freq;
   extern int chan;
-  extern int MODE;
+  //extern int MODE;
+  extern byte mode;
   int i;    // counter
   
   // EEPROM storage: frequency (4 bytes), mode (1 byte)
   // format: 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband, 4=Burst, 5=WSPR, 6=BEACON
   
   const PROGMEM float defaultFreq[100] = {
-     7030000,  // start freq when turned on
+     7030000,  // start freq when turned on Chan 00
      3525000,  // 80M cw ch 1
      7035000,  // 40M cw ch 2
     10110000,  // 30M cw ch 3
@@ -1050,8 +1059,8 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
  
      5696000,  // US Coast Guard ch 41
      8983000,  //       ""       ch 42
-    11201000,  //       ""       ch 43
-     5320000,  // USCG Tactical  ch 44
+    10000000,  //       ""       ch 43
+    11000000,  // USCG Tactical  ch 44
      8337000,  //       ""       ch 45
     10993600,  //       ""       ch 46
     11197400,  //       ""       ch 47
@@ -1139,8 +1148,8 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   }
   
   // save init value (0) for vfo offset (you need to set correct value from menu)
-  EEPROM.write(1020, highByte((int)0));
-  EEPROM.write(1021, lowByte((int)0));
+  EEPROM.write(CalLow, highByte((int)0));
+  EEPROM.write(CalHi, lowByte((int)0));
   
   // done
   return;
