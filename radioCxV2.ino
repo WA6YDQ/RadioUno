@@ -1072,7 +1072,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   // EEPROM storage: frequency (4 bytes), mode (1 byte)
   // format: 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband, 4=Burst, 5=WSPR, 6=BEACON
   
-  const PROGMEM float defaultFreq[100] = {
+  const float defaultFreq[100] PROGMEM = {
      7030000,  // start freq when turned on Chan 00
      3525000,  // 80M cw ch 1
      7035000,  // 40M cw ch 2
@@ -1188,7 +1188,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   /* set the mode for the memory channels */
   // 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband, 4=Burst, 5=WSPR, 6=BEACON
   
-  const PROGMEM byte defaultMode[100] = {
+  const byte defaultMode[100] PROGMEM = {
     3,3,3,3,3,          // ch 00 - 04 
     0,0,1,5,5,5,5,      // ch 05 - 11
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 12 - 25
@@ -1239,7 +1239,7 @@ void wspr(float wfreq) { // (frequency sent from calling routine)
 
 /********* START of encode routine *********/
 
-const PROGMEM byte sync[] = {  // note byte inplace of char
+const byte sync[] PROGMEM = {  // note byte inplace of char
     1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0,
     1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0,
     0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1,
@@ -1251,7 +1251,7 @@ const PROGMEM byte sync[] = {  // note byte inplace of char
     0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0
 } ;
 
-const PROGMEM byte rdx[] = {   // note byte inplace of char
+const byte rdx[] PROGMEM = {   // note byte inplace of char
     0, 128, 64, 32, 160, 96, 16, 144, 80, 48, 112, 8, 136, 72, 40, 104, 24,
     152, 88, 56, 120, 4, 132, 68, 36, 100, 20, 148, 84, 52, 116, 12, 140,
     76, 44, 108, 28, 156, 92, 60, 124, 2, 130, 66, 34, 98, 18, 146, 82, 50,
