@@ -209,6 +209,40 @@ void setup() {
 /***** SUBROUTINES *****/
 /***********************/
  
+ /*** show tune speed by displaying underline cursor in freq area ***/
+void showTune() {
+    extern float STEP;
+    extern int vfoChan;
+    if (vfoChan != 0) return;
+    
+    if (STEP == 100000) {
+        lcd1.setCursor(8,0);
+        lcd1.cursor();
+        return;
+    }
+    if (STEP == 10000) {
+        lcd1.setCursor(9,0);
+        lcd1.cursor();
+        return;
+    }
+    if (STEP == 1000) {
+        lcd1.setCursor(10,0);
+        lcd1.cursor();
+        return;
+    }
+    if (STEP == 100) {
+        lcd1.setCursor(12,0);
+        lcd1.cursor();
+        return;
+    }
+    if (STEP == 10) {
+        lcd1.setCursor(13,0);
+        lcd1.cursor();
+        return;
+    }
+    return;
+}
+ 
  
  /**** show the current frequency ****/
 void updateFreq() {          // this is called from inside an interrupt - delays & I2C are disabled
@@ -865,6 +899,7 @@ void loop() {
    freqMSB = (int)(freq/1000000);  // when this changes, update the band register
    lcd1.setCursor(15,0);
    lcd1.write("R");  // show rx mode
+   showTune();       // show tuning step
    
    
    /****************************/
@@ -889,16 +924,7 @@ void loop() {
              if (STEP >= 10000)
                STEP = 10;
           }  // cycle between 10, 100, 1000 hz tune rates
-          /* show where cursor is */
-          if (STEP == 10)
-           lcd1.setCursor(13,0);  // show cursor location
-          if (STEP == 100)
-           lcd1.setCursor(12,0);
-          if (STEP == 1000)
-           lcd1.setCursor(10,0); 
-          lcd1.cursor();
-          delay(550);
-          lcd1.noCursor();    // turn off cursor
+          showTune();
           delay(20);    // debounce after the fact 
           continue; 
         }
@@ -910,19 +936,13 @@ void loop() {
           }
           if (STEP == 10000) {
             STEP = 100000;
-            lcd1.setCursor(8,0);  // show cursor location
-            lcd1.cursor();
-            delay(550);
-            lcd1.noCursor();
+            showTune();
             delay(20);  // stops falsing
             continue;
           }
           if ((STEP < 10000) || (STEP == 100000)) {
             STEP = 10000;
-            lcd1.setCursor(9,0);   // show cursor location
-            lcd1.cursor();
-            delay(550);
-            lcd1.noCursor();
+            showTune();
             delay(20);  // stops falsing
             continue;
           }
@@ -944,6 +964,7 @@ void loop() {
          if (vfoChan == 1) { 
            freqBak = freq;  // save vfo freq in chan mode
            modeBak = MODE;
+           lcd1.noCursor();
            Recall();        // in chan mode read from EEPROM
            updateMode();
          }
@@ -954,6 +975,7 @@ void loop() {
          updateFreq();      // show vfo freq or channel #
          updateMode();
          updateOsc();
+         showTune();
          continue;
        }
        // wait until released
@@ -972,6 +994,7 @@ void loop() {
             updateFreq();  // show freq display
             updateMode();
             updateOsc();
+            showTune();
             continue;
           }
           
@@ -981,6 +1004,7 @@ void loop() {
             updateFreq();
             updateMode();
             updateOsc();
+            showTune();
             while (digitalRead(vc) == LOW)
               continue;
             delay(20);
@@ -997,6 +1021,7 @@ void loop() {
        updateFreq();    // change freq
        updateMode();    // I2C CAN'T BE DONE IN INTERRUPT ROUTINES
        updateOsc();
+       showTune();      // show tune step size
        FREQFLAG = 0;
      }
      
@@ -1015,6 +1040,7 @@ void loop() {
         freq = tempfreq;
         updateFreq();
         updateOsc();
+        showTune();
         continue;
       }
       if (CWKEYER == 0) continue;  // in keyer mode - use keyer routine instead
@@ -1036,12 +1062,13 @@ void loop() {
       if (rit) {
          lcd1.setCursor(5,1);
          lcd1.print(F("RIT"));
-     }
+      }
+      showTune();
       continue;
     }
      
      
-    /* test mode button */
+    /* test mode/rit button */
     if (digitalRead(modesw) == 0) {
      delay(300);    // test for long/short press
      if (digitalRead(modesw) == 1) {    // short press - MODE function
@@ -1049,22 +1076,24 @@ void loop() {
         if (MODE == MAXMODE) MODE = 0;      // cycle thru
         updateMode();   // update LCD/radio registers 
         updateOsc();    // switch rx offset based on mode
+        showTune();
         continue;
      }
      // Long press - enable split (RIT)
-     //while (digitalRead(modesw) == 0) continue;
      rit = abs(rit-1);
      if (rit) {
-         ritFreq = freq;
+         ritFreq = freq;       // turn ON rit
          lcd1.setCursor(5,1);
          lcd1.print(F("RIT"));
+         showTune();
      } else {
-         freq = ritFreq;
+         freq = ritFreq;      // turn OFF rit
          updateFreq();        // restore rx freq
          updateBand();
          updateOsc();
          lcd1.setCursor(5,1);
          lcd1.print(F("   "));
+         showTune();
      }
      while (digitalRead(modesw) == 0) continue;
      delay(50);
@@ -1076,6 +1105,7 @@ void loop() {
      voltLoop++;
      if (voltLoop == 180000) {  // 180,000 is roughly 10 seconds at 16 MHz clock
        updateDcVolt();
+       showTune();
        voltLoop = 0;
      }
 
