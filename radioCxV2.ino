@@ -134,6 +134,8 @@ const char *grid = "CM98";  // WSPR grid square (change for your grid)
 
 float VOLT;                 // read DC Voltage on pin A0
 float freq;                 // main frequency in Hz
+float ritFreq;              // tx freq when rit is 1
+byte rit;                   // 0, no rit. 1, rit active
 float freqBak;              // use this when in channel mode to hold the vfo freq
 float STEP = 10;            // step size when tuning (in Hz)
 int   FREQFLAG = 0;         // when HIGH update freq Display & Osc
@@ -724,15 +726,17 @@ void menu() {
 
 
 void txKey() {  // key TX
-  extern byte radioReg;
-  extern float freq;
+  extern byte radioReg, rit;
+  extern float freq, ritFreq;
   extern int CALOFFSET;
   float VALUE, DIV, VINT, VA, VB;
   VB = 1000000.0;
 
   // set up/change the transmit frequency
-  
-  VALUE = (freq+CALOFFSET)/VB;    // tx freq is display freq, no offsets
+  if (rit == 0)
+      VALUE = (freq+CALOFFSET)/VB;    // tx freq is display freq, no offsets
+  if (rit == 1)
+      VALUE = (ritFreq+CALOFFSET)/VB;
   DIV = XTAL * MULTI;
   VALUE = DIV/VALUE;
   VINT = (long)VALUE;
@@ -789,6 +793,8 @@ void loop() {
 
    /* delare vars */ 
    float tempfreq;
+   extern float ritFreq;   // hold tx freq when rit is active
+   extern byte rit;        // 0, no rit. 1-rit
    extern int FREQFLAG;    // 0 if no freq update, 1 if freq updated
    extern float STEP;      // tune step size in hz
    int freqMSB;            // frequency MSB (use for band register)
@@ -800,7 +806,7 @@ void loop() {
    int modeBak = 0;
    extern byte CWKEYER;
    extern int CALOFFSET;
-   
+   rit = 0;                // start with no rit
    
 /* if vfo/chan button (vc) is pressed during power-up, jump
  * to MENU mode to calibrate the oscillator & change settings 
@@ -1027,6 +1033,10 @@ void loop() {
       updateFreq();                  // restore the display from swr reading
       updateMode();                  // display update
       updateDcVolt();                // display update
+      if (rit) {
+         lcd1.setCursor(5,1);
+         lcd1.print(F("RIT"));
+     }
       continue;
     }
      
@@ -1042,8 +1052,22 @@ void loop() {
         continue;
      }
      // Long press - enable split (RIT)
+     //while (digitalRead(modesw) == 0) continue;
+     rit = abs(rit-1);
+     if (rit) {
+         ritFreq = freq;
+         lcd1.setCursor(5,1);
+         lcd1.print(F("RIT"));
+     } else {
+         freq = ritFreq;
+         updateFreq();        // restore rx freq
+         updateBand();
+         updateOsc();
+         lcd1.setCursor(5,1);
+         lcd1.print(F("   "));
+     }
      while (digitalRead(modesw) == 0) continue;
-     // split routine
+     delay(50);
     }  // done
     
     
