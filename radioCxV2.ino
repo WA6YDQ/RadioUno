@@ -140,7 +140,7 @@ float freqBak;              // use this when in channel mode to hold the vfo fre
 float STEP = 10;            // step size when tuning (in Hz)
 int   FREQFLAG = 0;         // when HIGH update freq Display & Osc
 int   vfoChan = 0;          // 0=vfo, 1=chan, 2=menuMode
-byte  chan = 0;             // channel number - 0-99
+int  chan = 0;             // channel number - 0-99
 int   menu_sel;             // used in menu sub-system
 float MULTI = 28.0;         // multiplier (* XTAL) for PLL (used in transmit pll only)
 float XTAL = 25.0;          // Crystal frequency of PLL clock (MHz)
@@ -283,7 +283,7 @@ void updateFreq() {          // this is called from inside an interrupt - delays
 /**** Save vfo frequency to EEPROM ****/
 void Save() {
   extern float freq;
-  extern byte chan;
+  extern int chan;
   extern byte MODE;
   int i;
   int address = chan * 5;  // store freq as (4 byte) long, mode as 1 byte
@@ -306,7 +306,7 @@ void Save() {
 /*** Read from EEPROM to freq ****/  
 void Recall() {
   extern float freq;
-  extern byte chan;
+  extern int chan;
   extern byte MODE;
   int i;
   int address = chan * 5;  // recall freq as 4 byte values, mode as 1 byte
@@ -385,7 +385,7 @@ void changeFreq() {
      
      if (vfoChan == 1) {  // in channel mode - increment channel number
        chan += 1;
-       if (chan > 99) chan = 99;
+       if (chan > 99) chan = 0;
        Recall();  // read freq from EEPROM save in freq
        FREQFLAG = 1;
      }
@@ -411,7 +411,7 @@ void changeFreq() {
      
      if (vfoChan == 1) {  // in channel mode - decrement channel number
        chan -= 1;
-       if (chan < 0) chan = 0;
+       if (chan < 0) chan = 99;
        Recall();      // get the EEPROM channel freq
        FREQFLAG = 1;
      }
@@ -1124,7 +1124,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   // NOTE: this is ONLY called to initialize the EEPROM
   // (and may not be called at all - user's choice)
   extern float freq;
-  extern byte chan;
+  extern int chan;
   extern byte MODE;
   
   // EEPROM storage: frequency (4 bytes), mode (1 byte)
