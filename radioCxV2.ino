@@ -528,6 +528,7 @@ void menu() {
   extern int vfoChan;
   extern int menu_sel;
   extern int CALOFFSET;
+  int ByHi, ByLo;
   extern int FREQFLAG;
   float VALUE, DIV, VINT, VA, VB;
   VB = 1000000.0;
@@ -638,12 +639,15 @@ void menu() {
     if (menu_sel == 2) {
       if (FREQFLAG == 1) {
           lcd1.home();
-          lcd1.print(F("Sidetone    "));
+          lcd1.print(F("Sidetone      "));
           FREQFLAG = 0;
       }
       if (digitalRead(vc) == 0) {
           delay(100);
           if (digitalRead(vc) == 0) {
+              ByLo = EEPROM.read(SidetoneLow);
+              ByHi = EEPROM.read(SidetoneHi);
+              SIDETONE = word(ByHi,ByLo);
               tone(toneOut, SIDETONE); 
               vfoChan = 3;
               lcd1.home();
@@ -677,8 +681,8 @@ void menu() {
               delay(50);
               noTone(toneOut);
               /* now save to eeprom */
-              EEPROM.write(SidetoneLow, highByte(SIDETONE));
-              EEPROM.write(SidetoneHi, lowByte(SIDETONE));
+              EEPROM.write(SidetoneHi, highByte(SIDETONE));
+              EEPROM.write(SidetoneLow, lowByte(SIDETONE));
               lcd1.clear();
               lcd1.print(F("Saved Value   "));
               delay(700);
@@ -834,8 +838,8 @@ void loop() {
    if ((CALOFFSET > 3000) || (CALOFFSET < -3000)) CALOFFSET = 0; // assume eeprom corruption
    
    /* get sidetone from eeprom */
-   ByHi = EEPROM.read(SidetoneLow);
-   ByLo = EEPROM.read(SidetoneHi);
+   ByLo = EEPROM.read(SidetoneLow);
+   ByHi = EEPROM.read(SidetoneHi);
    SIDETONE = word(ByHi,ByLo);
    if ((SIDETONE > 1000) || (SIDETONE < 500)) SIDETONE = 700;  // assume not set or eeprom corrupted
    
@@ -1206,6 +1210,10 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
      freq = defaultFreq[chan];
      MODE = defaultMode[chan];
      Save();
+     lcd1.setCursor(0,0);    // watch as the channels fill
+     lcd1.print(F("CHAN "));
+     lcd1.print(chan);
+     delay(10);
   }
   
 
