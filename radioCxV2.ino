@@ -151,7 +151,7 @@ int CALOFFSET;              // calibrate setting for +/- 0 hz
 
 #define MAXMODE 7           // set max number of modes
 byte MODE;
-const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","CW-B","WSPR","BECN"};
+const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","SCAN","WSPR","BECN"};
 
 
 
@@ -819,6 +819,34 @@ void txDekey() {   // unkey TX, set power on for osc 0 and 2
 }
 
 
+void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pressing the encoder 
+               // switch stops and returns to the main loop. You can be in vfo or channel mode.
+    extern float freq;
+    float tempfreq;
+    unsigned int i;
+    while (digitalRead(knobsw) == LOW) continue;    // wait till released
+    tempfreq = freq;
+    while (true) {
+        freq = tempfreq;   // reset to beginning
+        for (i=0; i<500; i++) {
+            freq += 200;    //scan in increments of 200 hz
+            updateFreq();
+            updateBand();
+            updateOsc();
+            if (digitalRead(knobsw) == LOW) break;
+            delay(75); // 75ms per step
+        }
+        if (digitalRead(knobsw) == LOW) break;
+    }
+    freq = tempfreq;
+    updateFreq();
+    updateBand();
+    updateOsc();
+    while (digitalRead(knobsw) == LOW) continue;
+    delay(40);
+    return;
+}
+
    
 /**************************/   
 /******* MAIN LOOP ********/
@@ -910,6 +938,12 @@ void loop() {
      
      /* test knob switch - change step size based on long/short push */
      if (digitalRead(knobsw) == LOW) {
+        if (MODE == 4) {        //scan mode
+            scan();
+            delay(50);
+            showTune();
+            continue;
+        }
         if (vfoChan == 1) {  // channel mode - do nothing
           while (digitalRead(knobsw) == LOW) continue;
           delay(20);
