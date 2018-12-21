@@ -137,10 +137,10 @@ float freq;                 // main frequency in Hz
 float ritFreq;              // tx freq when rit is 1
 byte rit;                   // 0, no rit. 1, rit active
 float freqBak;              // use this when in channel mode to hold the vfo freq
-float STEP = 10;            // step size when tuning (in Hz)
+float STEP;                 // step size when tuning (in Hz)
 int   FREQFLAG = 0;         // when HIGH update freq Display & Osc
 int   vfoChan = 0;          // 0=vfo, 1=chan, 2=menuMode
-int  chan = 0;             // channel number - 0-99
+int  chan = 0;              // channel number - 0-99
 int   menu_sel;             // used in menu sub-system
 float MULTI = 28.0;         // multiplier (* XTAL) for PLL (used in transmit pll only)
 float XTAL = 25.0;          // Crystal frequency of PLL clock (MHz)
@@ -245,7 +245,7 @@ void showTune() {
  
  
  /**** show the current frequency ****/
-void updateFreq() {          // this is called from inside an interrupt - delays & I2C are disabled
+void updateFreq() {  
    extern float freq;
    extern int vfoChan;
 
@@ -280,7 +280,7 @@ void updateFreq() {          // this is called from inside an interrupt - delays
 
 
  
-/**** Save vfo frequency to EEPROM ****/
+/**** Store vfo frequency to EEPROM ****/
 void Save() {
   extern float freq;
   extern int chan;
@@ -303,7 +303,7 @@ void Save() {
   
   
   
-/*** Read from EEPROM to freq ****/  
+/*** Recall from EEPROM to freq ****/  
 void Recall() {
   extern float freq;
   extern int chan;
@@ -348,8 +348,8 @@ void updateDcVolt() {
  
   
  
-/**** INTERRUPT 0 (encoder turned cw/ccw) ****/
-/* read dir, change freq+/- by STEP size  ****/
+/**** INTERRUPT 0 ( rotary encoder turned cw/ccw) ****/
+/* read dir, change freq +/- by STEP size  ****/
 void changeFreq() {
    extern float freq;
    extern int FREQFLAG;
@@ -421,9 +421,10 @@ void changeFreq() {
      return;
    }
    
+   // nothing happend (shouldn't really get here)
    interrupts();
    delay(1);
-   return;    // nothing happend (shouldn't really get here)
+   return;    
 }
    
    
@@ -493,7 +494,7 @@ tx = 0 for RX, 1 for TX
     radioReg &= B00000111;    // clear current mode
     radioReg |= B01000000;    // set CW-USB  
   }
-  if (MODE >= 4) {   // cw bcn/burst/wspr use USB
+  if (MODE >= 4) {   // cw bcn/scan/wspr use USB
     radioReg &= B00000111;    // clear current mode
     radioReg |= B11000000;    // set SSB-USB
   }
@@ -821,17 +822,24 @@ void txDekey() {   // unkey TX, set power on for osc 0 and 2
 
 void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pressing the encoder 
                // switch stops and returns to the main loop. You can be in vfo or channel mode.
+               // does not stop on activity, just useful to check conditions.
     extern float freq;
     float tempfreq;
+    int freqMSB;
     unsigned int i;
+    
     while (digitalRead(knobsw) == LOW) continue;    // wait till released
     tempfreq = freq;
     while (true) {
         freq = tempfreq;   // reset to beginning
+        freqMSB = (int)(freq/1000000);
         for (i=0; i<500; i++) {
             freq += 200;    //scan in increments of 200 hz
+            if ((int)(freq/1000000) != freqMSB) {
+                freqMSB = (int)(freq/1000000);    // get new MHz value
+                updateBand();  // test for and change RF filters
+            }
             updateFreq();
-            updateBand();
             updateOsc();
             if (digitalRead(knobsw) == LOW) break;
             delay(75); // 75ms per step
@@ -918,6 +926,7 @@ void loop() {
    if ((freq < MINFREQ) || (freq > MAXFREQ)) freq = MINFREQ; // in case eeprom is corrupted
    if ((MODE < 0) || (MODE > MAXMODE)) MODE = 0; // in case eeprom is corrupted
    chan = 1;         // start at channel 1
+   STEP = 10;        // init step size 10 hz
    updateFreq();     // initial display of frequency
    updateOsc();      // set RX oscillator frequency
    txDekey();        // set tx freq to 1MHz (start osc, but move away from rx)
@@ -936,22 +945,36 @@ void loop() {
    while (1) {
      
      
-     /* test knob switch - change step size based on long/short push */
+     /* test knob switch - change step size based on long/short push, start special modes */
      if (digitalRead(knobsw) == LOW) {
-        if (MODE == 4) {        //scan mode
+         
+        if (MODE == 4) {        // scan mode - scan 100kc from current freq (vfo or chan)
             scan();
             delay(50);
             showTune();
+            freqMSB = (int)(freq/1000000);    // get new MHz value
             continue;
         }
+        
+        if (MODE == 5) {       // in WSPR mode - send 1 sequence then return
+            tempfreq = freq;
+            wspr(freq);
+            freq = tempfreq;
+            updateFreq();
+            updateOsc();
+            showTune();
+            continue;
+        }
+        
         if (vfoChan == 1) {  // channel mode - do nothing
           while (digitalRead(knobsw) == LOW) continue;
           delay(20);
           continue;
         }
+        
         delay(250);
-        if (digitalRead(knobsw) == HIGH) {  // short press - tune 10hz, 100 hz, 1khz 
-          if (STEP >= 10000) {  // at 10khz go back to 10 hz
+        if (digitalRead(knobsw) == HIGH) {   // short press - tune 10hz, 100 hz, 1khz 
+          if (STEP >= 10000) {               // at 10khz go back to 10 hz
             STEP = 10;
           } else {
              STEP *= 10;
@@ -1059,6 +1082,8 @@ void loop() {
        FREQFLAG = 0;
      }
      
+     
+     
     /* if MHz digit changes, test and update the band register */ 
     if ((int)(freq/1000000) != freqMSB) {
       freqMSB = (int)(freq/1000000);    // get new MHz value
@@ -1066,18 +1091,12 @@ void loop() {
     }
      
      
+     
     /* test keyIn line (manual key) */
     if ((digitalRead(keyIn1) == 0) || (digitalRead(keyIn2) == 0)) {   // TX key pressed
-      if (MODE == 5) {  // in WSPR mode -send 1 sequence then return
-        tempfreq = freq;
-        wspr(freq);
-        freq = tempfreq;
-        updateFreq();
-        updateOsc();
-        showTune();
-        continue;
-      }
+
       if (CWKEYER == 0) continue;  // in keyer mode - use keyer routine instead
+      
       tone(toneOut, SIDETONE);       // turn on sidetone
       txKey();                       // key the transmitter
       while ((digitalRead(keyIn1)==0)||(digitalRead(keyIn2)==0)) { 
@@ -1119,6 +1138,7 @@ void loop() {
          ritFreq = freq;       // turn ON rit
          lcd1.setCursor(5,1);
          lcd1.print(F("RIT"));
+         STEP = 10;            // in rit, init step size as smallest step
          showTune();
      } else {
          freq = ritFreq;      // turn OFF rit
@@ -1213,7 +1233,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
  
      5696000,  // US Coast Guard ch 41
      8983000,  //       ""       ch 42
-    10000000,  //       ""       ch 43
+     6501000,  // USCG Weather   ch 43
     11000000,  // USCG Tactical  ch 44
      8337000,  //       ""       ch 45
     10993600,  //       ""       ch 46
