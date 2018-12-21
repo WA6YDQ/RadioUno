@@ -21,8 +21,8 @@ All the usual radio features are there. VFO from (settable by you) 2.9 MHz thru
 an SWR indicator during transmit, DC voltage display on the 2x16 char LCD, different 
 modes controlling lines on the MCP23008, and a WSPR subsection that lets you 
 transmit WSPR from one of the channels or the VFO. There is a beacon mode (CW).
-Band scan (100kc from current displayed frequency or channel frequency is used
-as a way to tell if there in any activity. 100 kc is scanned in little over 37 seconds.
+Band scan (100kc from current displayed frequency or channel frequency) is used
+as a way to tell if there is any activity. 100 kc is scanned in a little over 37 seconds.
 The RIT is a little different in that you can go past the usual +/- 10KC. 
 Actually you can go as far apart as you like. Turning off RIT returns the receiver to 
 the original frequency.
