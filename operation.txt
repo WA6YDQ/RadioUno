@@ -10,7 +10,12 @@ The radio is put in receive mode and the band map register is set and
 the band lines are output on the MCP23008 port expander to select the 
 low pass filters.
 
-The default tuning step is set to 10hz.
+The default tuning step is set to 10 hz. A line (the cursor) will appear under
+the digit that will change when the rotary encoder is used to tune to 
+another frequency. Pressing the button on the rotary encoder will change the
+tuning speed. A short press will go from 10 hz to 100 hz to 1000 hz then back to
+10 hz. A long press (> 300 msec) will toggle between 10 KHz and 100 KHz and
+back to 10 KHz. A short press puts you back to 10 hz.
 
 The LCD display will show the following:
 Left, top line:
@@ -23,29 +28,23 @@ Left, bottom line:
 The mode (LSB, USB, etc)
 DC Voltage read from the DC in line
 
-If the VFO/CHANNEL button is pressed while turning on the radio, you will 
+If the VFO/CHANNEL button is pressed while TURNING ON the radio, you will 
 placed in the MENU mode. Details about the MENU mode are discussed later.
 
 If the MODE/RIT button is pressed while turning the radio on, the keyer mode
 will be set to auto (act as a CW keyer). If not pressed, keying will be
-manual (default).
+manual (default). (Keyer function not currently implimented).
 
 Turning the TUNE knob will change the displayed (and RF) frequency. Clockwise
-tunes UP, counter-clockwise tunes DOWN. The step size is based on pushing the
-switch on the rotary encoder. Default step size is 10 hz. A short push ( less 
-than 1/4 second) increments the step size by 10 to 100 hz. Another short press
-increments by 10 to 1 KHz. Another short push resets back to 10 hz.
+tunes UP, counter-clockwise tunes DOWN. 
 
-A long push sets the step size to 10 KHz. Another long push sets to 100 KHz.
-Every long push will alternate between 
-10 KHz and 100 KHz. A short push resets the step size to 10 hz.
 
 A short press on the MODE button steps through the modulation modes. They are:
 LSB (lower side band)
 USB (upper side band)
 CW-U (CW, upper side band receive)
 CW-L (CW, lower side band receive)
-CW-B (CW burst (use additional hardware for burst mode, receive upper side band)
+SCAN (channel scan, receive USB, see below)
 WSPR (transmit using WSPR (described below), receive upper sideband)
 BECN (transmit CW beacon (described below), receive upper side band)
 and then back to begining (LSB).
@@ -59,13 +58,13 @@ holds a frequency and mode.
 
 When in VFO mode, a short press goes to channel mode. The current frequency 
 and mode are stored. A short press while in CHANNEL mode will restore the
-saved frequency and mode.
+saved frequency and mode and jump back to VFO mode.
 
 In CHANNEL mode rotating the rotary encoder clockwise will increase the 
 channel number by 1 until channel 99. Then further clockwide rotation will 
-have no effect. Rotating the rotary encoder in CHANNEL mode counterclockwise will
-decrease the channel number by 1 until channel 00. Further rotation past 00 will
-have no effect.
+go back to channel 00. Rotating the rotary encoder in CHANNEL mode counter-
+clockwise will decrease the channel number by 1 until channel 00. Further 
+rotation past 00 will go to channel 99.
 
 When in CHANNEL mode, a long press will recall the current channel information
 (frequency and mode) to the VFO, deleting whatever was in the VFO at the time.
@@ -73,7 +72,8 @@ Also you will switch from CHANNEL mode to VFO mode when recalling a channel.
 
 When in VFO mode, a long press will store the current VFO frequency and mode to the
 channel number shown in the display. The current VFO frequency and mode will not
-change. You will see a displayed message that the data was stored.
+change. You will see a displayed message that the data was stored showing the channel 
+it was stored to.
 
 If you want to store the current VFO data to a channel you are not on, do the
 following:
@@ -115,10 +115,11 @@ reflected power.
 
 Pressing and holding the VFO/CHANNEL button during power on will enter the MENU mode.
 Rotating the knob to 'set default chan'. Press the VFO/MEM button. You will see
-'working' displayed. After a couple seconds, you will see 'done'. Power cycle the
-controller and channels 00 thru 99 will be set to the frequencies and modes 
+'working' displayed. The channel number will be displayed as each channel is loaded.
+After a couple seconds, you will see 'done'. Power cycle the controller and channels 
+00 thru 99 will be set to the frequencies and modes 
 seen in the end of the source code. NOTE: This also reset the oscillator calibration to 
-0 hz.
+0 hz and the sidetone frequency to 700 hz.
 
 -- Calibrating the Oscillator --
 
@@ -131,8 +132,44 @@ resume normal operations.
 -- Sidetone -- 
 
 During transmit, sidetone is generated at pin A1. This is a square wave and should 
-be fed to a low pass audio filter to make it sound better.
+be fed to a low pass audio filter to make it sound better. Also the sidetone frequency 
+is used as a cw offset in receive. You can change this. Power off the radio. Press and
+hold the VFO/CHAN button while turning on to enter the MENU mode. Rotate the knob
+until SIDETONE appears. Press the VFO/CHAN button. Now rotating the knob will change
+the frequency of the sidetone (and cw offset) down to 500 hz and up to 1000 hz. The
+sidetone will also be operational while adjusting. When you get the tone you want
+press the VFO/CHAN button to save.
 
+Power cycling the radio will go back to normal operation.
+
+-- RIT --
+
+Press and hold the MODE/RIT button (long press, > 300 msec). This enables the RIT
+(Receive Incremental Tuning). The transmit frequency will stay fixed, but the receive
+frequency will change. The default tuning speed is 10 hz, but pressing the tuning
+knob will change the tune speed (see above). The VFO/CHAN and MODE functions are
+disabled while in RIT mode, but you can tune to any frequency the radio allows
+while in RIT mode. 
+
+Pressing and holding the MODE/RIT button (longer than 300 ms) will turn off the RIT
+mode and reset the receive frequeicy to what it was before selecting RIT.
+
+-- SCAN --
+
+There is a band scan feature. Press (short) the MODE button to select SCAN. When
+the tuning knob is pressed the displayed frequency will step up 200 hz at a time
+thru 100 KHz. When the frequency + 100 KHz is reached, the frequency will jump 
+back to the starting point and resume scanning. This will repeat until the tuning
+knob is pressed again.
+
+This works in VFO mode as well as CHANNEL mode. This is useful in looking for 
+activity on a dead band.
+
+Press the MODE button again to get out of SCAN mode. The default mode while scanning
+is USB.
+ 
+
+--------------------------------------------
 
 There are a lot of comments in the source code. If you are competent at all, you should
 have no trouble using this.
