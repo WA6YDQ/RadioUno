@@ -945,7 +945,7 @@ void loop() {
    while (1) {
      
      
-     /* test knob switch - change step size based on long/short push, start special modes */
+     /* test rotary encoder switch - change step size based on long/short push, start special modes */
      if (digitalRead(knobsw) == LOW) {
          
         if (MODE == 4) {        // scan mode - scan 100kc from current freq (vfo or chan)
@@ -1015,7 +1015,15 @@ void loop() {
      
      /* test for vfo/chan(short press), sto/rcl(long press) button press */
      if (digitalRead(vc) == LOW) {
-       delay(300);
+         
+       if (rit) {    // if rit enabled, do nothing
+         while (digitalRead(vc)==0) continue;  // wait until released
+         delay(50);
+         continue;
+       }
+       
+       delay(300);  // check if long or short press
+       
        if (digitalRead(vc) == HIGH) {    // short press
          vfoChan = abs(vfoChan - 1);
          if (vfoChan == 1) { 
@@ -1035,6 +1043,7 @@ void loop() {
          showTune();
          continue;
        }
+       
        // wait until released
        if (digitalRead(vc) == LOW) {    // long press
           
@@ -1074,8 +1083,10 @@ void loop() {
      }
      
      
+     
+     /* update LCD after rotary encoder change */
      if (FREQFLAG) {    // FLAG changed due to interrupt on knob rotation
-       updateFreq();    // change freq
+       updateFreq();    // show new freq
        updateMode();    // I2C CAN'T BE DONE IN INTERRUPT ROUTINES
        updateOsc();
        showTune();      // show tune step size
@@ -1114,9 +1125,9 @@ void loop() {
       updateDcVolt();                // display update
       if (rit) {
          lcd1.setCursor(5,1);
-         lcd1.print(F("RIT"));
+         lcd1.print(F("RIT"));       // display update
       }
-      showTune();
+      showTune();                    // display update
       continue;
     }
      
@@ -1125,14 +1136,20 @@ void loop() {
     if (digitalRead(modesw) == 0) {
      delay(300);    // test for long/short press
      if (digitalRead(modesw) == 1) {    // short press - MODE function
-        MODE += 1;
+        if (rit) continue;       // don't change modes in rit mode  
+        MODE += 1;  // change to next mode 
         if (MODE == MAXMODE) MODE = 0;      // cycle thru
         updateMode();   // update LCD/radio registers 
         updateOsc();    // switch rx offset based on mode
         showTune();
         continue;
      }
-     // Long press - enable split (RIT)
+     // Long press - enable split (RIT) (still pressed)
+     if (vfoChan == 1) {        // in chan mode do nothing
+         while (digitalRead(modesw) == 0) continue;
+         delay(50);
+         continue;
+     }
      rit = abs(rit-1);
      if (rit) {
          ritFreq = freq;       // turn ON rit
@@ -1172,6 +1189,8 @@ void loop() {
 /***********************************************/
 /************* End of Main Code ****************/
 /***********************************************/
+
+
 
 void setDefault() {  /* initialize the EEPROM with default frequencies */
 
@@ -1231,23 +1250,23 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
      8849000,  // volmet   ""    ch 39
     13285000,  // volmet   ""    ch 40
  
-     5696000,  // US Coast Guard ch 41
-     8983000,  //       ""       ch 42
-     6501000,  // USCG Weather   ch 43
-    11000000,  // USCG Tactical  ch 44
-     8337000,  //       ""       ch 45
-    10993600,  //       ""       ch 46
-    11197400,  //       ""       ch 47
+     4426000,  // USCG Weather   ch 41
+     6501000,  //       ""       ch 42
+     8764000,  //       ""       ch 43
+    13089000,  //       ""       ch 44
+     4316000,  //       ""       ch 45
+     8502000,  //       ""       ch 46
+    12788000,  //       ""       ch 47
      4125000,  // USCG Distress  ch 48
      6215000,  //       ""       ch 49
-    12290000,  //       ""       ch 50
+     8291000,  //       ""       ch 50
+    12290000,  //       ""       ch 51
  
-     8992000,  // USAF HFGCS     ch 51
-    11175000,  // USAF   ""      ch 52
-     6739000,  // USAF Backup    ch 53
+     8992000,  // USAF HFGCS     ch 52
+    11175000,  // USAF   ""      ch 53
+     6739000,  // USAF   ""      ch 54
       
-    10000000,  //  Placeholder   ch 54
-    10000000,  //      ""        ch 55
+    10000000,  //  Placeholder   ch 55
     10000000,  //      ""        ch 56
     10000000,  //      ""        ch 57
     10000000,  //      ""        ch 58
