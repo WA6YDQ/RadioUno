@@ -207,7 +207,7 @@ void setup() {
 /***** SUBROUTINES *****/
 /***********************/
  
- /*** show tune speed by displaying underline cursor in freq area ***/
+ // show tune speed by displaying underline cursor in freq area
 void showTune() {
     extern float STEP;
     extern int vfoChan;
@@ -242,7 +242,7 @@ void showTune() {
 }
  
  
- /**** show the current frequency ****/
+ // show the current frequency
 void updateFreq() {  
    extern float freq;
    extern int vfoChan;
@@ -334,7 +334,7 @@ void updateDcVolt() {
   VOLT = analogRead(dcVoltage)/42.0;    // read DC voltage (use a float here)
   // dtostrf(float var,str len, digits after decimal point, var to hold val)
   dtostrf(VOLT,4,1,buf);  // arduino can't handle floats (WTF? it has a c compiler)
-  // this stupid little routine takes >2K of memory!!
+  // this stupid little routine takes 2K of memory!!
   lcd1.setCursor(11,1);
   lcd1.print(buf);
   lcd1.setCursor(15,1);
@@ -555,9 +555,9 @@ tx = 0 for RX, 1 for TX
 
 
 
-/**************************************/
-/* MENU mode - set certain values etc */
-/**************************************/
+/*******************************************/
+/* MENU mode - set default, working values */
+/*******************************************/
 
 void menu() {
   int i;                  // gp variable
@@ -565,6 +565,8 @@ void menu() {
   int charValue;          //   ""      ""       ""
   extern int vfoChan;
   extern int menu_sel;
+  
+  // this is for the cal routine
   extern int CALOFFSET;
   int ByHi, ByLo;
   extern int FREQFLAG;
@@ -573,7 +575,7 @@ void menu() {
   
   // these next 2 are for grid square calcs
   char gs[5];
-  const String PROGMEM  sChar = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const String PROGMEM  sChar = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";  // PROGMEM is ignored. Grrr...
   
   vfoChan = 2;    // in menu mode
   menu_sel = 0;   // select menu item #
@@ -593,10 +595,17 @@ void menu() {
   delay(500);
   FREQFLAG = 1;
   
+  
+  /*******************/
   /**** menu loop ****/
+  /*******************/
+  
   while (true) {
     
+    /*****************/
     /* calibrate VFO */
+    /*****************/
+    
     if (menu_sel == 0) {
       if (FREQFLAG == 1) {
           lcd1.home();
@@ -651,8 +660,12 @@ void menu() {
       continue;
     }
 
-    
+
+
+    /**********************************/
     /* set default channels in EEPROM */
+    /**********************************/
+    
     if (menu_sel == 1) {
         if (FREQFLAG == 1) {
             lcd1.home();
@@ -678,7 +691,12 @@ void menu() {
     }
     
     
+    
+    
+    /*********************/
     /* set sidetone freq */
+    /*********************/
+    
     if (menu_sel == 2) {
       if (FREQFLAG == 1) {
           lcd1.home();
@@ -823,6 +841,9 @@ void menu() {
       continue;
   }
  
+ 
+     /*** Placeholder ***/
+ 
     if (menu_sel == 4) {
       if (FREQFLAG == 1) {
           lcd1.home();
@@ -909,7 +930,7 @@ void txDekey() {   // unkey TX, set power on for osc 0 and 2
 /**** SCAN ****/
 void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pressing the encoder 
                // switch stops and returns to the main loop. You can be in vfo or channel mode.
-               // does not stop on activity, just useful to check conditions.
+               // does not stop on activity, just useful to check activity.
     extern float freq;
     float tempfreq;
     int freqMSB;
@@ -928,7 +949,9 @@ void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pres
             }
             updateFreq();
             updateOsc();
-            if (digitalRead(knobsw) == LOW) break;
+            if (digitalRead(vc) == LOW)        // pressing/holding vc will pause the scan
+                while (digitalRead(vc) == LOW) continue;
+            if (digitalRead(knobsw) == LOW) break;  // pressing the rotary encoder sw will stop the scan
             delay(75); // 75ms per step
         }
         if (digitalRead(knobsw) == LOW) break;
@@ -1502,8 +1525,8 @@ const byte rdx[] PROGMEM = {   // note byte inplace of char
   int n,i,xx;
   unsigned long time;
   
-  //float shift = 12000.0/8192.0;
-  float shift = 1.65;    // account for min freq variation in si5351 libs
+  //float shift = 12000.0/8192.0;  // this is the ideal way to do it
+  float shift = 1.65;    // account for freq variation in si5351 library
   
   //More accurate: int txtime = (int)((float)((8192/12000)*1000.0));
   int txtime = 683;  // time in msec (actully 1/shift * 1000 (for msec))
