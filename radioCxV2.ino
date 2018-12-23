@@ -31,7 +31,6 @@
 * TODO: add keyer functions
 *       add RIT or split operation
 *       add beacon mode
-*       burst is mostly hardware - test if this mode is needed
 *       try a different Si5351 library (or write code to turn on/off indiv Si ports)
 *       put WSPR power variable at beginning of code, not WSPR routine
 */
@@ -71,17 +70,15 @@
 * (the etherkit libs seem more suited for this - see github.com/etherkit/Si5351Arduino)
 *
 *
-* EEPROM address 1020, 1021 contain a calibrate offset in hz for the vfo
-* (determined from cal routine in menu)
 */
 
 /* Operation:
 *
 * At start up, the status of two buttons is checked: The MODE switch and the VFO/CHAN switch
 *
-* If the MODE switch is pressed, the built-in keyer will be used for CW transmit.
+* If the MODE switch is pressed, the built-in keyer (Not Implimented yet) will be used for CW transmit. 
 * If the MODE switch IS NOT pressed, the keyer will NOT be used and a manual key will be needed
-* to transmit CW. (Keyer not yet implimented)
+* to transmit CW. 
 *
 * At start up, if the CHANNEL/VFO button is NOT pressed, the radio will act normally.
 * If the CHANNEL/VFO button IS pressed, you will jump into the MENU mode. This is used 
@@ -98,15 +95,15 @@
 #define CalHi  511          //    ""    ""     ""      ""     ""
 #define SidetoneLow 508
 #define SidetoneHi  509
-
+#define gridAddr 504        // eeprom storage for grid square
 
 #include <LiquidCrystal.h>
 #include <stdlib.h>
 #include <EEPROM.h>
 #include <Wire.h>
-#include <asserts.h>
+//#include <asserts.h>
 #include <Adafruit_SI5351.h>
-#include <errors.h>
+//#include <errors.h>
 
 Adafruit_SI5351 clockgen = Adafruit_SI5351();  // you will need to install the Adafruit Si5351 libs
 
@@ -129,8 +126,7 @@ const int modesw = A2;     // Mode switch (RIT long press)
 
 
 const char *call = "D0MMY"; // WSPR Call Sign (change for your call)
-const char *grid = "CM98";  // WSPR grid square (change for your grid)
-//const int txpower = 15;   // WSPR power to antenna (set in wspr() routine)
+
 
 float VOLT;                 // read DC Voltage on pin A0
 float freq;                 // main frequency in Hz
@@ -151,7 +147,9 @@ int CALOFFSET;              // calibrate setting for +/- 0 hz
 
 #define MAXMODE 7           // set max number of modes
 byte MODE;
+/* tried using PROGMEM here, but it corrupted the array */
 const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","SCAN","WSPR","BECN"};
+
 
 
 
@@ -355,7 +353,7 @@ void changeFreq() {
    extern int FREQFLAG;
    extern int menu_sel;    // determines menu selection
    
-   if (vfoChan == 3) return; // in cal/sidetone mode, vfochan = 3
+   if (vfoChan == 3) return; // in cal/sidetone/setGrid mode, vfochan = 3
    
    if ((FREQFLAG==1) && (vfoChan<3)) {  // wait until display updated before continuing
        return;
@@ -562,6 +560,9 @@ tx = 0 for RX, 1 for TX
 /**************************************/
 
 void menu() {
+  int i;                  // gp variable
+  int charPos;            // used in setGrid, setCall
+  int charValue;          //   ""      ""       ""
   extern int vfoChan;
   extern int menu_sel;
   extern int CALOFFSET;
@@ -569,6 +570,10 @@ void menu() {
   extern int FREQFLAG;
   float VALUE, DIV, VINT, VA, VB;
   VB = 1000000.0;
+  
+  // these next 2 are for grid square calcs
+  char gs[5];
+  const String PROGMEM  sChar = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   
   vfoChan = 2;    // in menu mode
   menu_sel = 0;   // select menu item #
@@ -582,10 +587,10 @@ void menu() {
      delay(100);
      continue;  // wait until vc released
   }
-  delay(80);
+  delay(150);
   lcd1.home();
   lcd1.print(F("Select List        "));
-  delay(450);
+  delay(500);
   FREQFLAG = 1;
   
   /**** menu loop ****/
@@ -601,6 +606,7 @@ void menu() {
       CALOFFSET = 0;    // offset in Hz
         if (digitalRead(vc) == LOW) {    // wait for press on vc
           while (digitalRead(vc) == LOW) continue; // wait until vc is released
+          delay(80);
           lcd1.clear();
           lcd1.print(F("Rotate knob"));
           lcd1.setCursor(0,1);
@@ -659,7 +665,7 @@ void menu() {
             lcd1.home();
             lcd1.print(F("writing       "));
             while (digitalRead(vc) == LOW) continue;
-            delay(50);
+            delay(80);
             setDefault();
             lcd1.home();
             lcd1.print(F("done           "));
@@ -692,7 +698,7 @@ void menu() {
               lcd1.setCursor(0,1);
               lcd1.print(SIDETONE);
               while (digitalRead(vc) == 0) continue;
-              delay(50);
+              delay(80);
               while(digitalRead(vc)==1) {
                   if ((digitalRead(knobDir) == HIGH) && (digitalRead(knob) == LOW)) {
                       SIDETONE += 1;
@@ -715,7 +721,7 @@ void menu() {
                   }
               }
               while (digitalRead(vc) == 0) continue;
-              delay(50);
+              delay(80);
               noTone(toneOut);
               /* now save to eeprom */
               EEPROM.write(SidetoneHi, highByte(SIDETONE));
@@ -731,16 +737,92 @@ void menu() {
       continue;
     }
     
+    /**************************************/
+    /* set grid square (for beacon, wspr) */
+    /**************************************/
+    
     if (menu_sel == 3) {
       if (FREQFLAG == 1) {
           lcd1.home();
-          lcd1.print(F("menu 3           "));
+          lcd1.print(F("Set Grid Square "));
           FREQFLAG = 0;
       }
+      if (digitalRead(vc) == 0) {
+          delay(100);
+          vfoChan = 3;        // tell int to ignore knob rotation
+          if (digitalRead(vc) == 0) {
+              for (i=0; i<4; i++)        // read current grid square from eeprom
+                  gs[i] = EEPROM.read(gridAddr+i);
+              gs[i]='\0';
+              lcd1.home();
+              lcd1.print(F("Rotate Knob    ")); 
+              while (digitalRead(vc) == LOW) continue;
+              delay(80);
+              lcd1.setCursor(0,1);        // 2nd row, char pos 0
+              lcd1.print(gs);
+              charPos = 0;
+              charValue = 0;
+              lcd1.setCursor(charPos,1);
+              charValue = 9;              // initial char is a letter
+              lcd1.cursor();              // show cursor position
+              while (true) {              // set grid, read VFO/CHAN, knob, knobsw to change values
+                  if (digitalRead(vc) == 0) {    // save grid, exit routine
+                      for (i=0; i<4; i++)        // save grid to eeprom
+                          EEPROM.write(gridAddr+i,gs[i]);
+                      lcd1.noCursor();
+                      lcd1.home();
+                      lcd1.print(F("Grid Saved      "));
+                      lcd1.setCursor(0,1);
+                      lcd1.print(F("               "));
+                      lcd1.home();
+                      FREQFLAG = 1;
+                      break;
+                  }
+                  if (digitalRead(knobsw) == 0) {    // step to next char position
+                      charPos++;
+                      if (charPos == 4) charPos = 0;
+                      if (charPos < 2) charValue = 9;   // pos 0,1 alpha
+                      if (charPos > 1) charValue = 0;   // pos 2,3 numeric
+                      //charValue = 0;
+                      lcd1.setCursor(charPos,1);
+                      lcd1.cursor();        // show current position
+                      while (digitalRead(knobsw) == 0) continue;
+                      delay(50);
+                  }
+                  if ((digitalRead(knob) == LOW) && (digitalRead(knobDir) == HIGH)) {    // change char under cursor
+                      charValue++;
+                      if (charValue > 35) charValue = 0;
+                      gs[charPos] = sChar[charValue];
+                      lcd1.setCursor(charPos,1);
+                      lcd1.print(gs[charPos]);
+                      lcd1.setCursor(charPos,1);
+                      lcd1.cursor();                // reset underline cursor
+                      while (digitalRead(knob) == LOW) continue;
+                      delay(50);
+                  }
+                  if ((digitalRead(knob) == LOW) && (digitalRead(knobDir) == LOW)) {    // change char under cursor
+                      charValue--;
+                      if (charValue < 0) charValue = 35;
+                      gs[charPos] = sChar[charValue];
+                      lcd1.setCursor(charPos,1);
+                      lcd1.print(gs[charPos]);
+                      lcd1.setCursor(charPos,1);
+                      lcd1.cursor();                // reset underline cursor
+                      while (digitalRead(knob) == LOW) continue;
+                      delay(50);
+                  }
+                  
+              }
+              while (digitalRead(vc) == 0) continue;    // wait until vc is released
+              vfoChan = 2;        // back to menu mode
+          }
+      }
+                 
+                      
       delay(50);
       continue;
   }
-  
+ 
     if (menu_sel == 4) {
       if (FREQFLAG == 1) {
           lcd1.home();
@@ -760,6 +842,8 @@ void menu() {
 }
 
 
+
+/**** txKey ****/
 void txKey() {  // key TX
   extern byte radioReg, rit;
   extern float freq, ritFreq;
@@ -768,6 +852,7 @@ void txKey() {  // key TX
   VB = 1000000.0;
 
   // set up/change the transmit frequency
+  VALUE = 1;            // keep compiler happy
   if (rit == 0)
       VALUE = (freq+CALOFFSET)/VB;    // tx freq is display freq, no offsets
   if (rit == 1)
@@ -791,7 +876,7 @@ void txKey() {  // key TX
 }
 
 
-
+/**** txDekey ****/
 void txDekey() {   // unkey TX, set power on for osc 0 and 2
   extern byte radioReg;
   float VALUE, DIV, VINT, VA, VB;
@@ -820,6 +905,8 @@ void txDekey() {   // unkey TX, set power on for osc 0 and 2
 }
 
 
+
+/**** SCAN ****/
 void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pressing the encoder 
                // switch stops and returns to the main loop. You can be in vfo or channel mode.
                // does not stop on activity, just useful to check conditions.
@@ -1199,6 +1286,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   extern float freq;
   extern int chan;
   extern byte MODE;
+  int i;
   
   // EEPROM storage: frequency (4 bytes), mode (1 byte)
   // format: 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband, 4=Burst, 5=WSPR, 6=BEACON
@@ -1352,9 +1440,19 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   EEPROM.write(SidetoneHi, highByte((int)700));
   EEPROM.write(SidetoneLow, lowByte((int)700));
   
+  // save default grid square
+  EEPROM.write(gridAddr+0,'A');    // save grid to eeprom
+  EEPROM.write(gridAddr+1,'B');    // yeah, it's ugly. Running out of stack
+  EEPROM.write(gridAddr+2,'0');    // and this gets the job done
+  EEPROM.write(gridAddr+3,'1');
+  
+  
+  
   // done
   return;
 }
+
+
 
 /**********************************/
 /********* WSPR Transmitter *******/
@@ -1401,22 +1499,34 @@ const byte rdx[] PROGMEM = {   // note byte inplace of char
 
   char msg[162];
 
-  int n;
+  int n,i,xx;
   unsigned long time;
   
-  float shift = 12000.0/8192.0;
-  //int txtime = (int)((float)((8192/12000)*1000.0));
+  //float shift = 12000.0/8192.0;
+  float shift = 1.65;    // account for min freq variation in si5351 libs
+  
+  //More accurate: int txtime = (int)((float)((8192/12000)*1000.0));
   int txtime = 683;  // time in msec (actully 1/shift * 1000 (for msec))
+  
   extern float freq;
-
-  long c = encodecallsign(call) ;
-  long g = encodegrid(grid) ;
-  long p = encodepower(10) ;
-    
-  int i;
+  
+  // encode the call sign
+  long c = encodecallsign(call);
+ 
+  // encode the grid square from eeprom
+  char gsq[5];
+  for (i=0; i<4; i++)        // read grid from eeprom
+      gsq[i] = EEPROM.read(gridAddr+i);
+      gsq[i]='\0';
+  long g = encodegrid(gsq);
+  
+  // encode the power (dBm)
+  long p = encodepower(10);
+ 
   int mp = 0 ;
   unsigned long acc = 0;
 
+  // initialize message
   for (i=0; i<162; i++) msg[i] = sync[i];
 	
  
@@ -1452,15 +1562,23 @@ const byte rdx[] PROGMEM = {   // note byte inplace of char
     
   lcd1.home();
   lcd1.print(F("Sending          "));
-  
+  xx=0;
   for (i=0; i<162; i++) {
     n = msg[i]; 
+    /*
+    Serial.print(n);   // debug code - remove from production
+    Serial.print(" ");
+    xx++; 
+    if (xx>17) {
+        xx=0;
+        //Serial.print("\n");
+    }
+    */
     freq = wfreq + ((float)n*shift);
     txKey();  // freq got updated, call key routine to change on the fly
     time = millis() + txtime;
     while (millis() < time) continue; // wait until 0.683 seconds pass
   }
-  
   txDekey();
   return;
 }
@@ -1527,7 +1645,7 @@ int encodepower(const int p) {
 int parity(unsigned long x) {  // returns 1 or 0, x is a BIG #
     int even = 0 ;
     while (x) {
-	even = 1-even ;  // cleaver!
+	even = 1-even ; 
 	x = x & (x - 1) ;
     }
     return even ;
