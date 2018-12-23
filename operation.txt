@@ -86,6 +86,28 @@ to the displayed channel.
 
 Note: you can tell the current channel by the 2 digit number after the VF on the display.
 
+-- INITIAL OPERATION --
+
+The first time the radio is used, certail defaults MUST be set up for proper operation.
+
+1. Your CALLSIGN (located in source code at the programs beginning) must be changed
+to YOUR call. This is used for WSPR and CW beacon.
+
+2. Enter the MENU and set the following: 
+Set Default Channels (Required)
+Set Grid Square (Optional, for WSPR)
+Calibrate the oscillator (Optional, but good to be exact)
+Set Sidetone frequency (Optional, default is 700 hz, change if you want)
+
+Start with the radio powered OFF. Press and hold the VFO/CHAN button. Power ON the radio.
+Select 'set defaults'
+Press VFO/CHAN. The channels will be set.
+Press VFO/CHAN to go back to the menu system.
+
+Power OFF the radio when done. Powering back on WITHOUT the VFO/CHAN button resumes
+normal operation.
+
+
 -- WSPR --
 
 I've added a WSPR beacon. To use it, either dial in one of the wspr frequencies
@@ -142,6 +164,15 @@ press the VFO/CHAN button to save.
 
 Power cycling the radio will go back to normal operation.
 
+-- Setting the Grid Square --
+
+The grid square is sent during WSPR and CW Beacon. This needs to set to your location.
+Enter the Menu, select 'Set Grid Square'. The current grid square (saved in eeprom) will
+be displayed. Use the encoder knob to select the letters/numbers of your grid square.
+A push on the encoder switch will advance to the next position.
+When the grid square is correct, press the VFO/CHAN button to save to eeprom.
+If you do not want to save the new grid square, power off the radio. 
+
 -- RIT --
 
 Press and hold the MODE/RIT button (long press, > 300 msec). This enables the RIT
@@ -168,10 +199,13 @@ activity on a dead band.
 Press the MODE button again to get out of SCAN mode. The default mode while scanning
 is USB.
  
+While the radio is scanning, pressing and HOLDING the VFO/CHAN button will pause the 
+scan. As soon as the button is released, scan will resume from the point it was paused.
+
 
 --------------------------------------------
 
 There are a lot of comments in the source code. If you are competent at all, you should
-have no trouble using this.
+have no trouble making changes to suit your needs..
 
  
