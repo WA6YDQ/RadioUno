@@ -52,7 +52,8 @@
 *                Power level is defined in the wspr() routine.
 * txKey()        key the transmitter (send 1 to GP5 of the MCP23008), set Tx freq to display
 * txDekey()      dekey the transmitter (send 0 to GP5 of the MCP23008), shift Tx freq to 1 MHz
-* 
+* scan()         Scan 100kc from current display freq (vfo or channel)
+* showTune()     Place cursor on digit being tuned for step size display
 */
 
 /*
@@ -483,15 +484,15 @@ tx = 0 for RX, 1 for TX
     radioReg &= B00000111;    // clear current mode
     radioReg |= B11000000;    // set SSB-USB
   }
-  if (MODE == 2) {   // CW-L
+  if (MODE == 2) {   // CW-U
     radioReg &= B00000111;    // clear current mode
-    radioReg |= B00000000;    // set CW-LSB (this line really isn't needed) 
+    radioReg |= B01000000;    // set CW-USB
   }
-  if (MODE == 3) {   // CW-U  
+  if (MODE == 3) {   // CW-L  
     radioReg &= B00000111;    // clear current mode
-    radioReg |= B01000000;    // set CW-USB  
+    radioReg |= B00000000;    // set CW-LSB  
   }
-  if (MODE >= 4) {   // cw bcn/scan/wspr use USB
+  if (MODE >= 4) {   // wspr etc use USB
     radioReg &= B00000111;    // clear current mode
     radioReg |= B11000000;    // set SSB-USB
   }
@@ -990,10 +991,9 @@ void loop() {
    extern unsigned int SIDETONE;
    int refVoltage;         // reflected voltage displayed during transmit
    int i,x;                // misc variable
-   long voltLoop = 0;      // timing loop to show DC voltage updates every 5 seconds
+   long voltLoop = 0;      // timing loop to show DC voltage updates every several seconds
    extern byte MODE;
    int modeBak = 0;
-   extern byte CWKEYER;
    extern int CALOFFSET;
    rit = 0;                // start with no rit
    
@@ -1436,7 +1436,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   };
   
   /* set the mode for the memory channels */
-  // 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband, 4=Burst, 5=WSPR, 6=BEACON
+  // 0=lsb, 1=usb, 2=cw-upper sideband, 3=cw-lower sideband, 4=WSPR
   
   const byte defaultMode[100] PROGMEM = {
     3,3,3,3,3,          // ch 00 - 04 
@@ -1511,7 +1511,7 @@ const byte sync[] PROGMEM = {  // note byte inplace of char
     0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1,
     1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0,
     0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0
-} ;
+};
 
 const byte rdx[] PROGMEM = {   // note byte inplace of char
     0, 128, 64, 32, 160, 96, 16, 144, 80, 48, 112, 8, 136, 72, 40, 104, 24,
@@ -1524,7 +1524,7 @@ const byte rdx[] PROGMEM = {   // note byte inplace of char
     77, 45, 109, 29, 157, 93, 61, 125, 3, 131, 67, 35, 99, 19, 147, 83, 51,
     115, 11, 139, 75, 43, 107, 27, 155, 91, 59, 123, 7, 135, 71, 39, 103,
     23, 151, 87, 55, 119, 15, 143, 79, 47, 111, 31, 159, 95, 63, 127 
-} ;
+};
 
   char msg[162];
 
@@ -1561,30 +1561,30 @@ const byte rdx[] PROGMEM = {   // note byte inplace of char
  
     /* by default, arduino does not do math well enough (think k&r c from '68) */
   for (i=27; i>=0; i--) {		/* encode the callsign, 28 bits */
-    acc <<= 1 ;
+    acc <<= 1;
     if (c & 1L<<i) acc |= 1;          // NOTE the 1L (damn 8 bit thinking...)
-    msg[rdx[mp++]] += 2*parity(acc & 0xf2d05351L) ;
-    msg[rdx[mp++]] += 2*parity(acc & 0xe4613c47L) ;
+    msg[rdx[mp++]] += 2*parity(acc & 0xf2d05351L);
+    msg[rdx[mp++]] += 2*parity(acc & 0xe4613c47L);
   }
 
   for (i=14; i>=0; i--) {		/* encode the grid, 15 bits */
-    acc <<= 1 ;
-    if (g & (1<<i)) acc |= 1 ;
-    msg[rdx[mp++]] += 2*parity(acc & 0xf2d05351L) ;
-    msg[rdx[mp++]] += 2*parity(acc & 0xe4613c47L) ;
+    acc <<= 1;
+    if (g & (1<<i)) acc |= 1;
+    msg[rdx[mp++]] += 2*parity(acc & 0xf2d05351L);
+    msg[rdx[mp++]] += 2*parity(acc & 0xe4613c47L);
   }
 
   for (i=6; i>=0; i--) {		/* encode the power, 7 bits */
-    acc <<= 1 ;
-    if (p & (1<<i)) acc |= 1 ;
-    msg[rdx[mp++]] += 2*parity(acc & 0xf2d05351L) ;
-    msg[rdx[mp++]] += 2*parity(acc & 0xe4613c47L) ;
+    acc <<= 1;
+    if (p & (1<<i)) acc |= 1;
+    msg[rdx[mp++]] += 2*parity(acc & 0xf2d05351L);
+    msg[rdx[mp++]] += 2*parity(acc & 0xe4613c47L);
   }
 
   for (i=30; i>=0; i--) {		/* pad with 31 zero bits */
-    acc <<= 1L ;
-    msg[rdx[mp++]] += 2*parity(acc & 0xf2d05351L) ;
-    msg[rdx[mp++]] += 2*parity(acc & 0xe4613c47L) ;
+    acc <<= 1L;
+    msg[rdx[mp++]] += 2*parity(acc & 0xf2d05351L);
+    msg[rdx[mp++]] += 2*parity(acc & 0xe4613c47L);
   }
     
     /* we have the 162 byte code in msg[], send it */
@@ -1618,68 +1618,68 @@ const byte rdx[] PROGMEM = {   // note byte inplace of char
 // lots of longs where int was specified to allow for arduino 8 bit math
 
 int chval1(int ch) {
-    if (isdigit(ch)) return ch - '0' ;
-    if (isalpha(ch)) return 10 + toupper(ch) - 'A' ;
-    if (ch == ' ') return 36 ;
+    if (isdigit(ch)) return ch - '0';
+    if (isalpha(ch)) return 10 + toupper(ch) - 'A';
+    if (ch == ' ') return 36;
 }
 
 int chval2(int ch) {
-    if (isalpha(ch)) return toupper(ch) - 'A' ;
-    if (ch == ' ') return 26 ;
+    if (isalpha(ch)) return toupper(ch) - 'A';
+    if (ch == ' ') return 26;
 }
 
 long encodecallsign(const char *callsign) {
     /* find the first digit... */
     int i;
-    long rc ;
-    char call[6] ;
+    long rc;
+    char call[6];
 
-    for (i=0; i<6; i++) call[i] = ' ' ;
+    for (i=0; i<6; i++) call[i] = ' ';
 
     if (isdigit(callsign[1])) {
 	/* 1x callsigns... */
 	for (i=0; i<strlen(callsign); i++)
         //for (i=0; i<sizeof(callsign); i++)
-	   call[1+i] = callsign[i] ;
+	   call[1+i] = callsign[i];
     } else if (isdigit(callsign[2])) {
 	/* 2x callsigns... */
 	for (i=0; i<strlen(callsign); i++)
         //for (i=0; i<sizeof(callsign); i++)
-	   call[i] = callsign[i] ;
+	   call[i] = callsign[i];
     } else {
-	return 0 ;
+	return 0;
     }
 
-    rc  = chval1(call[0]) ; rc *= 36 ; 
-    rc += chval1(call[1]) ; rc *= 10 ;
-    rc += chval1(call[2]) ; rc *= 27 ;
-    rc += chval2(call[3]) ; rc *= 27 ;
-    rc += chval2(call[4]) ; rc *= 27 ;
-    rc += chval2(call[5]) ;
+    rc  = chval1(call[0]); rc *= 36; 
+    rc += chval1(call[1]); rc *= 10;
+    rc += chval1(call[2]); rc *= 27;
+    rc += chval2(call[3]); rc *= 27;
+    rc += chval2(call[4]); rc *= 27;
+    rc += chval2(call[5]);
 
-    return rc ;
+    return rc;
 }
 
 long encodegrid(const char *grid) {
-    long rc ;
+    long rc;
 
     rc = (179 - 10 * (grid[0]-'A') - (grid[2] - '0')) * 180
-	 + (10 * (grid[1]-'A')) + (grid[3] - '0') ;
+	 + (10 * (grid[1]-'A')) + (grid[3] - '0');
 
-    return rc ;
+    return rc;
 }
 
 int encodepower(const int p) {
-    return p + 64 ;
+    return p + 64;
 }
 
 int parity(unsigned long x) {  // returns 1 or 0, x is a BIG #
-    int even = 0 ;
+    int even = 0;
     while (x) {
-	even = 1-even ; 
-	x = x & (x - 1) ;
+	even = 1-even; 
+	x = x & (x - 1);
     }
-    return even ;
+    return even;
 }
 
 
