@@ -7,7 +7,7 @@
 *
 *  This code is GPL-3.0 There is no warranty, implied or otherwise
 *  that this code will work. It may not. It might destroy society
-*  as we know it. 
+*  as we know it. It does, however, work for me.
 *
 * k theis <theis.kurt@gmail.com> 11/2018
 *
@@ -29,7 +29,7 @@
 * to understand. As long as there is available memory, I keep it verbose.
 *
 * TODO: add keyer functions
-*       add RIT or split operation
+*       redo the osc code. Some freqs I get weird noise I suspect might be caused by jitter etc.
 *       add beacon mode
 *       try a different Si5351 library (or write code to turn on/off indiv Si ports)
 *       put WSPR power variable at beginning of code, not WSPR routine
@@ -61,7 +61,7 @@
 * Si5351 don't allow the individual clocks to be enabled/disabled. It's all
 * or nothing. With the TX freq set all the time, it's signal is heard on the receiver.
 *
-*
+*  (osc notes):
 *  Enabled desired outputs (see Register 3)
 *  ASSERT_STATUS(write8(SI5351_REGISTER_3_OUTPUT_ENABLE_CONTROL, enabled ? 0x00: 0xFF));
 * This should enable/disable indiv clocks
@@ -76,9 +76,6 @@
 *
 * At start up, the status of two buttons is checked: The MODE switch and the VFO/CHAN switch
 *
-* If the MODE switch is pressed, the built-in keyer (Not Implimented yet) will be used for CW transmit. 
-* If the MODE switch IS NOT pressed, the keyer will NOT be used and a manual key will be needed
-* to transmit CW. 
 *
 * At start up, if the CHANNEL/VFO button is NOT pressed, the radio will act normally.
 * If the CHANNEL/VFO button IS pressed, you will jump into the MENU mode. This is used 
@@ -91,11 +88,15 @@
 
 #define MINFREQ  2900000    // lowest operating frequency (hz)
 #define MAXFREQ 16100000    // highest operating frequency (hz)
-#define CalLow 510          // Address for calibrate eeprom storage
-#define CalHi  511          //    ""    ""     ""      ""     ""
-#define SidetoneLow 508
+
+// EEPROM addresses 0-500 used for channel storage, 5 bytes/channel
+#define gridAddr 504        // eeprom storage for grid square (4 bytes)
+#define SidetoneLow 508     // sidetone/cw offset frequency storage (2 bytes)
 #define SidetoneHi  509
-#define gridAddr 504        // eeprom storage for grid square
+#define CalLow 510          // EEPROM address for calibrate function
+#define CalHi  511          // (2 bytes)
+
+
 
 #include <LiquidCrystal.h>
 #include <stdlib.h>
@@ -121,8 +122,8 @@ const int toneOut = A1;    // audio tone out while in transmit on A1
 const int refIn = A3;      // dc reflected power input (used in transmit)
 const int vc = 3;          // pushbutton, vfo/channel and sto/rcl on D3
 const int keyIn1 = 11;     // key line (dot)  D11
-const int keyIn2 = 12;     // key line (dash) D12
-const int modesw = A2;     // Mode switch (RIT long press)
+const int mm = 12;         // Mode 2/Menu D12
+const int mr = A2;         // Mode switch (RIT long press)
 
 
 const char *call = "D0MMY"; // WSPR Call Sign (change for your call)
@@ -142,15 +143,11 @@ float MULTI = 28.0;         // multiplier (* XTAL) for PLL (used in transmit pll
 float XTAL = 25.0;          // Crystal frequency of PLL clock (MHz)
 unsigned int SIDETONE;      // sidetone frequency for tone out and CW offset
 byte  radioReg;             // set radio filters, radio mode etc (for MCP23008)
-byte CWKEYER;               // set at startup 1=manual key, 0=keyer paddles used
 int CALOFFSET;              // calibrate setting for +/- 0 hz
 
-#define MAXMODE 7           // set max number of modes
+#define MAXMODE 6           // set max number of modes
 byte MODE;
-/* tried using PROGMEM here, but it corrupted the array */
-const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","SCAN","WSPR","BECN"};
-
-
+const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","SCAN","WSPR"};
 
 
 /* set up hardware ports etc */ 
@@ -165,8 +162,8 @@ void setup() {
    pinMode(knobDir, INPUT_PULLUP);
    pinMode(vc, INPUT_PULLUP);
    pinMode(keyIn1, INPUT_PULLUP);
-   pinMode(keyIn2, INPUT_PULLUP);
-   pinMode(modesw, INPUT_PULLUP);
+   pinMode(mm, INPUT_PULLUP);
+   pinMode(mr, INPUT_PULLUP);
    analogReference(DEFAULT);    // use 5vdc for this 5v arduino
    
    //Serial.begin(9600);
@@ -432,7 +429,7 @@ void updateOsc() {
 
    extern unsigned int SIDETONE;
    extern float freq, XTAL;  
-   extern byte MODE;   // 0=LSB, 1=USB, 2=CW-L, 3=CW-U
+   extern byte MODE;   // 0=LSB, 1=USB, 2=CW-L, 3=CW-U, 4 and up USB
    float VB, VALUE, DIV, VA, VINT;
    float rxFreq;  // rx freq is 4x freq, +/- ssb/cw offset, +/- caloffset
    extern int CALOFFSET;
@@ -443,9 +440,9 @@ void updateOsc() {
    // set up the receive frequency (no offset for ssb needed with qrp-labs rx with poly)
    if (MODE == 0) rxFreq = freq; // LSB
    if (MODE == 1) rxFreq = freq; // USB
-   if (MODE == 2) rxFreq = freq + (float)SIDETONE;    // CW-L
-   if (MODE == 3) rxFreq = freq - (float)SIDETONE;    // CW-U
-   if (MODE > 3)  rxFreq = freq; // all else
+   if (MODE == 2) rxFreq = freq - (float)SIDETONE;    // CW-L
+   if (MODE == 3) rxFreq = freq + (float)SIDETONE;    // CW-U
+   if (MODE >  3) rxFreq = freq; // all else
    
    rxFreq += CALOFFSET;
    
@@ -460,6 +457,8 @@ void updateOsc() {
    return;
 }
 
+
+/* Update the Mode */
 void updateMode() {
   extern byte radioReg;
   extern byte MODE;
@@ -869,8 +868,18 @@ void txKey() {  // key TX
   extern byte radioReg, rit;
   extern float freq, ritFreq;
   extern int CALOFFSET;
-  float VALUE, DIV, VINT, VA, VB;
+  float rxfreq, VALUE, DIV, VINT, VA, VB;
   VB = 1000000.0;
+
+  // turn off osc 1 (rx freq)
+  rxfreq = 1000000;    // set to 1mc, restore in main code
+  VALUE = rxfreq/VB;
+  DIV = XTAL * MULTI;
+  VALUE = DIV/VALUE;
+  VINT = (long)VALUE;
+  VA = (long)((VALUE - VINT) * VB);
+  clockgen.setupMultisynth(1, SI5351_PLL_A, VINT, VA, VB); // rx output on osc 1
+
 
   // set up/change the transmit frequency
   VALUE = 1;            // keep compiler happy
@@ -1001,17 +1010,7 @@ void loop() {
    
    // vfo/chan button - NOT pressed during startup; continue normal operation
    
-   CWKEYER = digitalRead(modesw); // default is 1 - manual active.
-   if (CWKEYER == 0) {
-     lcd1.home();
-     lcd1.print(F("CW KEYER AUTO"));
-   }
-   while (digitalRead(modesw) == 0) continue;   
-   // if modesw pressed at startup (active 0), use auto key for CW operation.
-   if (CWKEYER == 0) {
-     lcd1.home();
-     lcd1.print(F("               "));  // clear just displayed message
-   }
+
    
    /*****************************/
    /* initialize radio settings */
@@ -1055,18 +1054,18 @@ void loop() {
    while (1) {
      
      
-     /* test rotary encoder switch - change step size based on long/short push, start special modes */
+     /* test rotary encoder SWITCH - change step size based on long/short push, start special modes */
      if (digitalRead(knobsw) == LOW) {
          
         if (MODE == 4) {        // scan mode - scan 100kc from current freq (vfo or chan)
             scan();
             delay(50);
             showTune();
-            freqMSB = (int)(freq/1000000);    // get new MHz value
+            freqMSB = (int)(freq/1000000);    // get new MHz value (may have changed during scan)
             continue;
         }
         
-        if (MODE == 5) {       // in WSPR mode - send 1 sequence then return
+        if (MODE == 5) {       // WSPR mode, displayed freq is active - send 1 sequence then return
             tempfreq = freq;
             wspr(freq);
             freq = tempfreq;
@@ -1075,6 +1074,7 @@ void loop() {
             showTune();
             continue;
         }
+
         
         if (vfoChan == 1) {  // channel mode - do nothing
           while (digitalRead(knobsw) == LOW) continue;
@@ -1115,6 +1115,7 @@ void loop() {
           }
           delay(20);    // debounce after press - stops falsing
         }
+        
      }
  
    
@@ -1213,14 +1214,14 @@ void loop() {
      
      
      
-    /* test keyIn line (manual key) */
-    if ((digitalRead(keyIn1) == 0) || (digitalRead(keyIn2) == 0)) {   // TX key pressed
-
-      if (CWKEYER == 0) continue;  // in keyer mode - use keyer routine instead
-      
-      tone(toneOut, SIDETONE);       // turn on sidetone
-      txKey();                       // key the transmitter
-      while ((digitalRead(keyIn1)==0)||(digitalRead(keyIn2)==0)) { 
+    /* test keyIn line (manual key for cw, ptt for ssb) */
+    
+    if (digitalRead(keyIn1) == 0) {    // TX key pressed 
+      if (MODE > 3) continue;          // only keyup for cw/ssb modes
+      if ((MODE == 2) || (MODE == 3))    
+          tone(toneOut, SIDETONE);     // turn on sidetone for cw modes
+      txKey();                         // key the transmitter
+      while (digitalRead(keyIn1)==0) { 
         refVoltage = analogRead(refIn);  // read reflected power
         refVoltage /= 128;               // bring in range 0-7
         lcd1.setCursor(0,1);             // print a bar graph of ref power
@@ -1228,8 +1229,11 @@ void loop() {
         for (x=i; x<8; x++) lcd1.write(' ');  // blank rest of display
         continue;                    // wait 'till released
       }
-      noTone(toneOut);               // turn off sidetone
+      // cw key/ptt released
+      if ((MODE == 2) || (MODE == 3))
+          noTone(toneOut);           // turn off sidetone
       txDekey();                     // dekey the transmitter
+      updateOsc();                   // restore rx freq (set to 1mc during tx)
       updateFreq();                  // restore the display from swr reading
       updateMode();                  // display update
       updateDcVolt();                // display update
@@ -1243,12 +1247,12 @@ void loop() {
      
      
     /* test mode/rit button */
-    if (digitalRead(modesw) == 0) {
+    if (digitalRead(mr) == 0) {
      delay(300);    // test for long/short press
-     if (digitalRead(modesw) == 1) {    // short press - MODE function
+     if (digitalRead(mr) == 1) {    // short press - MODE function
         if (rit) continue;       // don't change modes in rit mode  
         MODE += 1;  // change to next mode 
-        if (MODE == MAXMODE) MODE = 0;      // cycle thru
+        if (MODE > 5) MODE = 0;      // cycle thru
         updateMode();   // update LCD/radio registers 
         updateOsc();    // switch rx offset based on mode
         showTune();
@@ -1256,7 +1260,7 @@ void loop() {
      }
      // Long press - enable split (RIT) (still pressed)
      if (vfoChan == 1) {        // in chan mode do nothing
-         while (digitalRead(modesw) == 0) continue;
+         while (digitalRead(mr) == 0) continue;
          delay(50);
          continue;
      }
@@ -1276,18 +1280,18 @@ void loop() {
          lcd1.print(F("   "));
          showTune();
      }
-     while (digitalRead(modesw) == 0) continue;
+     while (digitalRead(mr) == 0) continue;
      delay(50);
     }  // done
     
     
-    
+
     /* update the DC voltage reading once every 10 seconds or so */
      voltLoop++;
      if (voltLoop == 180000) {  // 180,000 is roughly 10 seconds at 16 MHz clock
-       updateDcVolt();
-       showTune();
-       voltLoop = 0;
+         updateDcVolt();
+         showTune();
+         voltLoop = 0;
      }
 
    
@@ -1302,10 +1306,14 @@ void loop() {
 
 
 
+/*** Set Default values, frequencies and modes in EEPROM ***/
+
 void setDefault() {  /* initialize the EEPROM with default frequencies */
 
   // NOTE: this is ONLY called to initialize the EEPROM
   // (and may not be called at all - user's choice)
+  // Also Note: these memory slots are overwritten when you store channels. 
+  
   extern float freq;
   extern int chan;
   extern byte MODE;
@@ -1315,7 +1323,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   // format: 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband, 4=Burst, 5=WSPR, 6=BEACON
   
   const float defaultFreq[100] PROGMEM = {
-     7030000,  // start freq when turned on Chan 00
+     7030000,  // ch 00, start freq/mode when turned on
      3525000,  // 80M cw ch 1
      7035000,  // 40M cw ch 2
     10110000,  // 30M cw ch 3
@@ -1468,8 +1476,6 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   EEPROM.write(gridAddr+1,'B');    // yeah, it's ugly. Running out of stack
   EEPROM.write(gridAddr+2,'0');    // and this gets the job done
   EEPROM.write(gridAddr+3,'1');
-  
-  
   
   // done
   return;
@@ -1633,10 +1639,12 @@ long encodecallsign(const char *callsign) {
     if (isdigit(callsign[1])) {
 	/* 1x callsigns... */
 	for (i=0; i<strlen(callsign); i++)
+        //for (i=0; i<sizeof(callsign); i++)
 	   call[1+i] = callsign[i] ;
     } else if (isdigit(callsign[2])) {
 	/* 2x callsigns... */
 	for (i=0; i<strlen(callsign); i++)
+        //for (i=0; i<sizeof(callsign); i++)
 	   call[i] = callsign[i] ;
     } else {
 	return 0 ;
@@ -1676,46 +1684,7 @@ int parity(unsigned long x) {  // returns 1 or 0, x is a BIG #
 
 
 
-/*******************/
-/**** CW Beacon ****/
-/*******************/
-
-// this is just a stub for later
-
-/*
-void cwbeacon() {
-  int i,n;
-  char ch;
-  int DELAY;
-  int SPEED = 15;    // speed in WPM
-  
-  const PROGMEM char cwcode[42][8] = {
-    "13","3111","3131","311","1","1131","331","1111","11","1333",  // a-j
-    "313","1311","33","31","333","1331","3313","131","111","3",    // k-t
-    "113","1113","133","3113","3133","3311",                       // u-z
-    "33333","13333","11333","11133","11113","11111",               // 0-5
-    "31111","33111","33311","33331",                               // 6-9
-    "131313","113311","331133",   // period(.), question(?), comma(,)
-    "31113","31131"               // double dash (-), dn(/)
-  };
-
-  const PROGMEM byte chrstring[42] = {
-    'A','B','C','D','E','F','G','H','I',
-    'J','K','L','M','N','O','P','Q','R',
-    'S','T','U','V','W','X','Y','Z','0',
-    '1','2','3','4','5','6','7','8','9',
-    '.','?',',','-','/'
-  };
-  
-  
-  const PROGMEM char cwmsg[] = "DE D0MMY/6 CM98 BEACON";
-  
-  // come here from main via key line going low
-  for (i=0; i<len(cwmsg); i++) {
-    ch = toupper(cwmsg[i]);
-    for (n=0; n<len(chrstring); n++) {
-     if (ch == chrstring[n]) {
+        
        
 
-}
-*/
+
