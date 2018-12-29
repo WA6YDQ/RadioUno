@@ -60,7 +60,7 @@
 * Notes - 
 * At startup, the TX freq is set to 1 MHz. The Adafruit libraries I use for the
 * Si5351 don't allow the individual clocks to be enabled/disabled. It's all
-* or nothing. With the TX freq set all the time, it's signal is heard on the receiver.
+* or nothing. With the TX freq set to RX all the time, it's signal is heard on the receiver.
 *
 *  (osc notes):
 *  Enabled desired outputs (see Register 3)
@@ -97,6 +97,7 @@
 #define CalLow 510          // EEPROM address for calibrate function
 #define CalHi  511          // (2 bytes)
 
+#define DEBOUNCE 50         // debounce make/break switches
 
 
 #include <LiquidCrystal.h>
@@ -128,23 +129,23 @@ const int mr = A2;         // Mode switch (RIT long press)
 
 
 const char *call = "D0MMY"; // WSPR Call Sign (change for your call)
-
+// grid is set from menu and stored in eeprom
 
 float VOLT;                 // read DC Voltage on pin A0
 float freq;                 // main frequency in Hz
 float ritFreq;              // tx freq when rit is 1
-byte rit;                   // 0, no rit. 1, rit active
+byte  rit;                  // 0, no rit. 1, rit active
 float freqBak;              // use this when in channel mode to hold the vfo freq
 float STEP;                 // step size when tuning (in Hz)
 int   FREQFLAG = 0;         // when HIGH update freq Display & Osc
 int   vfoChan = 0;          // 0=vfo, 1=chan, 2=menuMode
-int  chan = 0;              // channel number - 0-99
+int   chan = 0;             // channel number - 0-99
 int   menu_sel;             // used in menu sub-system
 float MULTI = 28.0;         // multiplier (* XTAL) for PLL (used in transmit pll only)
 float XTAL = 25.0;          // Crystal frequency of PLL clock (MHz)
 unsigned int SIDETONE;      // sidetone frequency for tone out and CW offset
 byte  radioReg;             // set radio filters, radio mode etc (for MCP23008)
-int CALOFFSET;              // calibrate setting for +/- 0 hz
+int   CALOFFSET;            // calibrate setting for +/- 0 hz
 
 #define MAXMODE 6           // set max number of modes
 byte MODE;
@@ -167,6 +168,7 @@ void setup() {
    pinMode(mr, INPUT_PULLUP);
    analogReference(DEFAULT);    // use 5vdc for this 5v arduino
    
+   /* debug code - enable when problems */
    //Serial.begin(9600);
    //Serial.print("Starting up\n\n");
    
@@ -276,7 +278,7 @@ void updateFreq() {
 
 
  
-/**** Store vfo frequency to EEPROM ****/
+/**** Store vfo frequency/MODE to EEPROM ****/
 void Save() {
   extern float freq;
   extern int chan;
@@ -299,7 +301,7 @@ void Save() {
   
   
   
-/*** Recall from EEPROM to freq ****/  
+/*** Recall from EEPROM to freq/MODE ****/  
 void Recall() {
   extern float freq;
   extern int chan;
@@ -423,16 +425,20 @@ void changeFreq() {
    return;    
 }
    
+ 
+ 
    
-   
-/* update the si5351 oscillator for RX */   
+/***************************************/ 
+/* update the si5351 oscillator for RX */
+/***************************************/
+
 void updateOsc() {
 
    extern unsigned int SIDETONE;
    extern float freq, XTAL;  
-   extern byte MODE;   // 0=LSB, 1=USB, 2=CW-L, 3=CW-U, 4 and up USB
+   extern byte MODE;   // 0=LSB, 1=USB, 2=CW-U, 3=CW-L, 4 and up USB
    float VB, VALUE, DIV, VA, VINT;
-   float rxFreq;  // rx freq is 4x freq, +/- ssb/cw offset, +/- caloffset
+   float rxFreq;  // rx freq = 4x freq, +/- ssb/cw offset, +/- caloffset
    extern int CALOFFSET;
    
    rxFreq = 0;
@@ -615,7 +621,7 @@ void menu() {
       CALOFFSET = 0;    // offset in Hz
         if (digitalRead(vc) == LOW) {    // wait for press on vc
           while (digitalRead(vc) == LOW) continue; // wait until vc is released
-          delay(80);
+          delay(DEBOUNCE);
           lcd1.clear();
           lcd1.print(F("Rotate knob"));
           lcd1.setCursor(0,1);
@@ -651,7 +657,7 @@ void menu() {
               lcd1.clear();
               lcd1.print(F("Offset Saved"));
               while(digitalRead(vc) == LOW) continue;
-              delay(80);
+              delay(DEBOUNCE);
               vfoChan = 2;  // re-enable knob for menu ops
               break;
             }
@@ -678,7 +684,7 @@ void menu() {
             lcd1.home();
             lcd1.print(F("writing       "));
             while (digitalRead(vc) == LOW) continue;
-            delay(80);
+            delay(DEBOUNCE);
             setDefault();
             lcd1.home();
             lcd1.print(F("done           "));
@@ -686,7 +692,7 @@ void menu() {
             FREQFLAG = 1; // to redraw menu choice
           }
         }
-      delay(50);
+      delay(DEBOUNCE);
       continue;
     }
     
@@ -716,7 +722,7 @@ void menu() {
               lcd1.setCursor(0,1);
               lcd1.print(SIDETONE);
               while (digitalRead(vc) == 0) continue;
-              delay(80);
+              delay(DEBOUNCE);
               while(digitalRead(vc)==1) {
                   if ((digitalRead(knobDir) == HIGH) && (digitalRead(knob) == LOW)) {
                       SIDETONE += 1;
@@ -739,7 +745,7 @@ void menu() {
                   }
               }
               while (digitalRead(vc) == 0) continue;
-              delay(80);
+              delay(DEBOUNCE);
               noTone(toneOut);
               /* now save to eeprom */
               EEPROM.write(SidetoneHi, highByte(SIDETONE));
@@ -751,7 +757,7 @@ void menu() {
           }
       }
       vfoChan = 2;  // back to menu mode
-      delay(50);
+      delay(DEBOUNCE);
       continue;
     }
     
@@ -775,7 +781,7 @@ void menu() {
               lcd1.home();
               lcd1.print(F("Rotate Knob    ")); 
               while (digitalRead(vc) == LOW) continue;
-              delay(80);
+              delay(DEBOUNCE);
               lcd1.setCursor(0,1);        // 2nd row, char pos 0
               lcd1.print(gs);
               charPos = 0;
@@ -805,7 +811,7 @@ void menu() {
                       lcd1.setCursor(charPos,1);
                       lcd1.cursor();        // show current position
                       while (digitalRead(knobsw) == 0) continue;
-                      delay(50);
+                      delay(DEBOUNCE);
                   }
                   if ((digitalRead(knob) == LOW) && (digitalRead(knobDir) == HIGH)) {    // change char under cursor
                       charValue++;
@@ -816,7 +822,7 @@ void menu() {
                       lcd1.setCursor(charPos,1);
                       lcd1.cursor();                // reset underline cursor
                       while (digitalRead(knob) == LOW) continue;
-                      delay(50);
+                      delay(DEBOUNCE);
                   }
                   if ((digitalRead(knob) == LOW) && (digitalRead(knobDir) == LOW)) {    // change char under cursor
                       charValue--;
@@ -827,7 +833,7 @@ void menu() {
                       lcd1.setCursor(charPos,1);
                       lcd1.cursor();                // reset underline cursor
                       while (digitalRead(knob) == LOW) continue;
-                      delay(50);
+                      delay(DEBOUNCE);
                   }
                   
               }
@@ -837,7 +843,7 @@ void menu() {
       }
                  
                       
-      delay(50);
+      delay(DEBOUNCE);
       continue;
   }
  
@@ -850,7 +856,7 @@ void menu() {
           lcd1.print(F("menu 4           "));
           FREQFLAG = 0;
       }
-      delay(50);
+      delay(DEBOUNCE);
       continue;
      }
      
@@ -872,7 +878,7 @@ void txKey() {  // key TX
   float rxfreq, VALUE, DIV, VINT, VA, VB;
   VB = 1000000.0;
 
-  // turn off osc 1 (rx freq)
+  // change rx osc 1 (rx freq) to 1mc during tx
   rxfreq = 1000000;    // set to 1mc, restore in main code
   VALUE = rxfreq/VB;
   DIV = XTAL * MULTI;
@@ -971,7 +977,7 @@ void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pres
     updateBand();
     updateOsc();
     while (digitalRead(knobsw) == LOW) continue;
-    delay(40);
+    delay(DEBOUNCE);
     return;
 }
 
@@ -1059,7 +1065,7 @@ void loop() {
          
         if (MODE == 4) {        // scan mode - scan 100kc from current freq (vfo or chan)
             scan();
-            delay(50);
+            delay(DEBOUNCE);
             showTune();
             freqMSB = (int)(freq/1000000);    // get new MHz value (may have changed during scan)
             continue;
@@ -1078,7 +1084,7 @@ void loop() {
         
         if (vfoChan == 1) {  // channel mode - do nothing
           while (digitalRead(knobsw) == LOW) continue;
-          delay(20);
+          delay(DEBOUNCE);
           continue;
         }
         
@@ -1092,28 +1098,28 @@ void loop() {
                STEP = 10;
           }  // cycle between 10, 100, 1000 hz tune rates
           showTune();
-          delay(20);    // debounce after the fact 
+          delay(DEBOUNCE);    // debounce after the fact 
           continue; 
         }
 
         if (digitalRead(knobsw) == LOW) {  // long press - tune 10K or 100K
           while (digitalRead(knobsw) == LOW){
-            delay(20);    // stops falsing
+            delay(DEBOUNCE);    // stops falsing
             continue;
           }
           if (STEP == 10000) {
             STEP = 100000;
             showTune();
-            delay(20);  // stops falsing
+            delay(DEBOUNCE);  // stops falsing
             continue;
           }
           if ((STEP < 10000) || (STEP == 100000)) {
             STEP = 10000;
             showTune();
-            delay(20);  // stops falsing
+            delay(DEBOUNCE);  // stops falsing
             continue;
           }
-          delay(20);    // debounce after press - stops falsing
+          delay(DEBOUNCE);    // debounce after press - stops falsing
         }
         
      }
@@ -1124,12 +1130,12 @@ void loop() {
        
      
      
-     /* test for vfo/chan(short press), sto/rcl(long press) button press */
+     /* test for vfo/chan (short press), sto/rcl (long press) button press */
      if (digitalRead(vc) == LOW) {
          
        if (rit) {    // if rit enabled, do nothing
          while (digitalRead(vc)==0) continue;  // wait until released
-         delay(50);
+         delay(DEBOUNCE);
          continue;
        }
        
@@ -1165,8 +1171,7 @@ void loop() {
             if (chan > 9) lcd1.print(F("Saved "));    // show 2 digit channel number
             lcd1.print(chan);
             lcd1.print(F("          "));
-            while (digitalRead(vc) == LOW)
-              continue;
+            while (digitalRead(vc) == LOW) continue;
             delay(700);
             updateFreq();  // show freq display
             updateMode();
@@ -1182,9 +1187,8 @@ void loop() {
             updateMode();
             updateOsc();
             showTune();
-            while (digitalRead(vc) == LOW)
-              continue;
-            delay(20);
+            while (digitalRead(vc) == LOW) continue;
+            delay(DEBOUNCE);
             continue;
           }
        }
@@ -1227,7 +1231,7 @@ void loop() {
         lcd1.setCursor(0,1);             // print a bar graph of ref power
         for (i=0; i<refVoltage; i++) lcd1.write('|');
         for (x=i; x<8; x++) lcd1.write(' ');  // blank rest of display
-        continue;                    // wait 'till released
+        continue;                     // wait 'till released
       }
       // cw key/ptt released
       if ((MODE == 2) || (MODE == 3))
@@ -1261,7 +1265,7 @@ void loop() {
      // Long press - enable split (RIT) (still pressed)
      if (vfoChan == 1) {        // in chan mode do nothing
          while (digitalRead(mr) == 0) continue;
-         delay(50);
+         delay(DEBOUNCE);
          continue;
      }
      rit = abs(rit-1);
@@ -1281,14 +1285,14 @@ void loop() {
          showTune();
      }
      while (digitalRead(mr) == 0) continue;
-     delay(50);
+     delay(DEBOUNCE);
     }  // done
     
     
 
-    /* update the DC voltage reading once every 10 seconds or so */
+    /* update the DC voltage reading once every 5 seconds or so */
      voltLoop++;
-     if (voltLoop == 180000) {  // 180,000 is roughly 10 seconds at 16 MHz clock
+     if (voltLoop == 90000) {  // 90,000 is roughly 5 seconds at 16 MHz clock
          updateDcVolt();
          showTune();
          voltLoop = 0;
