@@ -1,6 +1,7 @@
 
 /*
-* multi-mode radio controller and synthesizer using an Arduino Uno
+* --- RadioUno ---
+* Multi-mode radio controller and synthesizer using an Arduino Uno
 * and si5351 oscillator. Also used is an MCP23008 I/O expander
 * for RF filter and hardware control of modules.
 *
@@ -75,17 +76,37 @@
 
 /* Operation:
 *
-* At start up, the status of two buttons is checked: The MODE switch and the VFO/CHAN switch
-*
+* At start up, the status of VFO/CHAN is checked:
 *
 * At start up, if the CHANNEL/VFO button is NOT pressed, the radio will act normally.
 * If the CHANNEL/VFO button IS pressed, you will jump into the MENU mode. This is used 
 * to configure various settings. To exit from the menu mode, turn off the radio. Turning
 * the radio back on while NOT pressing the CHANNEL/VFO button will restore normal operation.
 *
+* If not pressed, the various registers are set up (some read from eeprom) and
+* the oscillator is configured. The TX osc (and osc 2) are set to 1 MHz. This gets them
+* out of the way of the receiver. The receiver oscillator is configured to 4 times the
+* receive frequency. The Tayloe detector my receiver uses requires this. If you have 
+* a different receiver, your requirements will be different.
+*
+* After all the lines and registers are configured, the program enters a command loop where
+* the control buttons, the rotary encoder and tx lines are constantly checked. The display
+* is not updated unless external inputs change. This eliminates a lot of digital noise.
+*
+* All the control (input) lines tie to the processor directly. If using the port expander for
+* input, it would have to be constantly polled and this would generate too much digital noise
+* for the receiver to be useful. 
+*
+* Many additional functions I wanted proved to be impossible to impliment due to RAM limitations.
+* The stack and the heap would collide causing weird issues. If you add features be aware of this.
+*
+
 */
 
 
+
+
+/****************************/
 
 #define MINFREQ  2900000    // lowest operating frequency (hz)
 #define MAXFREQ 16100000    // highest operating frequency (hz)
@@ -99,6 +120,10 @@
 
 #define DEBOUNCE 50         // debounce make/break switches
 
+/****************************/
+
+
+
 
 #include <LiquidCrystal.h>
 #include <stdlib.h>
@@ -108,13 +133,16 @@
 #include <Adafruit_SI5351.h>
 //#include <errors.h>
 
+
+
+
 Adafruit_SI5351 clockgen = Adafruit_SI5351();  // you will need to install the Adafruit Si5351 libs
 
 // lcd1 is Frequency Display (LCD D0 thru D3 are unused and left floating)
 LiquidCrystal lcd1(10,13,6,7,8,9);    // RS, e, D4, D5, D6, D7
 // (original version used 2 lcd displays, lcd1 and lcd2)
  
-/* define input lines (output lines are on the port expander, I2C & LCD)*/ 
+/* define input lines (output lines are on the port expander, I2C & LCD) */ 
 const int knobsw = 4;      // digital pin D4 (encoder switch) White wire on mine
 const int knob = 2;        // digital pin D2 (encoder pulse) Brown wire on mine
 const int knobDir = 5;     // digital pin D5 (encoder direction) Blue wire on mine
@@ -130,6 +158,9 @@ const int mr = A2;         // Mode switch (RIT long press)
 
 const char *call = "D0MMY"; // WSPR Call Sign (change for your call)
 // grid is set from menu and stored in eeprom
+// power (dBm) is set from the wspr routine
+
+
 
 float VOLT;                 // read DC Voltage on pin A0
 float freq;                 // main frequency in Hz
@@ -207,7 +238,12 @@ void setup() {
 /***** SUBROUTINES *****/
 /***********************/
  
- // show tune speed by displaying underline cursor in freq area
+ 
+ 
+/*********************************************************************/
+/**** show tune speed by displaying underline cursor in freq area ****/
+/*********************************************************************/
+
 void showTune() {
     extern float STEP;
     extern int vfoChan;
@@ -242,7 +278,13 @@ void showTune() {
 }
  
  
- // show the current frequency
+ 
+ 
+ 
+/********************************************/ 
+/****      show the current frequency    ****/
+/********************************************/
+
 void updateFreq() {  
    extern float freq;
    extern int vfoChan;
@@ -277,8 +319,12 @@ void updateFreq() {
 
 
 
- 
+
+
+/********************************************/ 
 /**** Store vfo frequency/MODE to EEPROM ****/
+/********************************************/
+
 void Save() {
   extern float freq;
   extern int chan;
@@ -301,7 +347,11 @@ void Save() {
   
   
   
-/*** Recall from EEPROM to freq/MODE ****/  
+  
+/****************************************/
+/*** Recall from EEPROM to freq/MODE ****/
+/****************************************/
+
 void Recall() {
   extern float freq;
   extern int chan;
@@ -323,9 +373,13 @@ void Recall() {
 } 
   
   
+  
+  
    
- 
+/******************************/
 /**** Display D.C. Voltage ****/
+/******************************/
+
 void updateDcVolt() {
   // read analog pin, divide by constant for true voltage (I use a 10k multiturn pot)
   extern float VOLT;
@@ -344,9 +398,12 @@ void updateDcVolt() {
 }
  
  
-  
  
+  
+/*****************************************************/
 /**** INTERRUPT 0 ( rotary encoder turned cw/ccw) ****/
+/*****************************************************/
+
 /* read dir, change freq +/- by STEP size  ****/
 void changeFreq() {
    extern float freq;
@@ -465,7 +522,12 @@ void updateOsc() {
 }
 
 
+
+
+/*******************/
 /* Update the Mode */
+/*******************/
+
 void updateMode() {
   extern byte radioReg;
   extern byte MODE;
@@ -506,11 +568,11 @@ tx = 0 for RX, 1 for TX
   
   Wire.beginTransmission(0x20);  // set up communication with port expander
   Wire.write(0x09);              // select GPIO pins
-  Wire.write(radioReg);           // set band pins
+  Wire.write(radioReg);          // set band pins
   Wire.endTransmission();        // done
   
   /* update LCD display */
-  lcd1.setCursor(0,1);    // row 1 pos 0
+  lcd1.setCursor(0,1);           // row 1 pos 0
   lcd1.print(mode[MODE]);
   
   return;
@@ -519,7 +581,11 @@ tx = 0 for RX, 1 for TX
 
 
 
-/* update the band register for the TX low pass filters and rx filter */
+
+/*************************************************************************/
+/* update the band register for the TX low pass filters and rx filters   */
+/*************************************************************************/
+
 void updateBand() {
   extern float freq;
   extern byte radioReg;
@@ -870,7 +936,10 @@ void menu() {
 
 
 
+/***************/
 /**** txKey ****/
+/***************/
+
 void txKey() {  // key TX
   extern byte radioReg, rit;
   extern float freq, ritFreq;
@@ -913,7 +982,11 @@ void txKey() {  // key TX
 }
 
 
+
+/*****************/
 /**** txDekey ****/
+/*****************/
+
 void txDekey() {   // unkey TX, set power on for osc 0 and 2
   extern byte radioReg;
   float VALUE, DIV, VINT, VA, VB;
@@ -943,7 +1016,11 @@ void txDekey() {   // unkey TX, set power on for osc 0 and 2
 
 
 
+
+/**************/
 /**** SCAN ****/
+/**************/
+
 void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pressing the encoder 
                // switch stops and returns to the main loop. You can be in vfo or channel mode.
                // does not stop on activity, just useful to check activity.
@@ -981,10 +1058,12 @@ void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pres
     return;
 }
 
+
    
 /**************************/   
 /******* MAIN LOOP ********/
 /**************************/
+
 void loop() {
 
    /* delare vars */ 
@@ -1309,8 +1388,9 @@ void loop() {
 /***********************************************/
 
 
-
+/***********************************************************/
 /*** Set Default values, frequencies and modes in EEPROM ***/
+/***********************************************************/
 
 void setDefault() {  /* initialize the EEPROM with default frequencies */
 
@@ -1484,6 +1564,8 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   // done
   return;
 }
+
+
 
 
 
