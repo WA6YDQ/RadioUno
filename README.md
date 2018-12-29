@@ -4,10 +4,9 @@ An Arduino controller for portable HF radio with Si5351 oscillator, WSPR,
 multiple channels, band scan, etc.
 
 The .jpg file is the schematic of the controller as-built. This is my running 
-version. It selects CW, USB/LSB (receive - I use DSB for transmit), WSPR, 
-CW beacon, and burst send on CW. The code is heavely documented. If you have 
-any experience programming, you should have no trouble making changes to suit
-your setup, or just use the code as-is.
+version. It selects CW, USB/LSB (receive - I use DSB for transmit) and WSPR. 
+The code is heavely documented. If you have any experience programming, you 
+should have no trouble making changes to suityour setup, or just use the code as-is.
 
 This is an HF radio controller. It has the receive and transmit oscillators
 using an Si5351 programmable clock oscillator, an MCP23008 port expander as a 
@@ -36,11 +35,9 @@ The code is in Beta at the moment. It's working for me, but I'm adding features
 almost daily. Currently the code is 22K as loaded in the Arduino.
 
 TODO: 
-> Add a keyer (currently cw manual only right now) (maybe - maybe not)
-> Finish cw beacon mode (commented out while I tighten up the code)
 > Try a different Si5351 library (limitations on the current one used)
 > Clean up transmit code (not tested too well, will fix as my xmtr evolves)
-> Add 6M & 2M transmit code for beacon/wspr (tx only - my receiver doesn't go that high)
+
 
 
 
