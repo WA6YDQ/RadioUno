@@ -38,6 +38,7 @@ almost daily. Currently the code is 25K as loaded in the Arduino.
 TODO: 
 > Try a different Si5351 library (limitations on the current one used)
 > Clean up transmit code (not tested too well, will fix as my xmtr evolves)
+> DC Voltage display does not update during transmit
 
 
 
