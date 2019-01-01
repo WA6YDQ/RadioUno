@@ -1,6 +1,157 @@
-This document describes the operation of the arduino radio controller. 
+This document describes the operation of the RadioUno arduino radio controller. 
 For the purposes of this document, it is assumed it is installed in and
-controlling a radio.
+controlling a radio. Please see the schematic for specifics.
+
+-----
+
+This controller has 4 push button switches. 3 Normal push buttons
+and a 4th as part of the rotary encoder used to tune the frequency,
+change channels and select items in the menu modes.
+
+All buttons have more than one function. They are controlled by short presses
+and long presses. A short press is defined as less than 1/3 of a second. A long
+press is longer than that. In almost every case you will have some feedback 
+(display change etc) with a button press.
+
+Button 1 (vc): 
+Short Press toggles between VFO and CHANNEL operation.
+
+Long press when in VFO mode saves the displayed frequency and mode to the
+memory channel displayed after VF (00 - 99) (STORE). 
+Long press when in CHANNEL mode recalls the frequency and mode from the 
+channel to the vfo and changes from CHANNEL mode back to VFO mode (RECALL).
+
+Button 2 (mr):
+Short press cycles thru the modes. These are:
+LSB/USB/CW(usb)/CW(lsb)/WSPR/BECN
+
+Long press toggles RIT on and off.
+
+Button 3 (scq):
+A short press initiates automated transmission (beacons).
+When the mode is WSPR, a short press will send ONE sequence on the 
+displayed frequency. A press will abort the WSPR transmission.
+
+When the mode is CW, a short press will send: 
+"CQ CQ CQ DE (your call) (your call) K"
+
+When the mode is BECN, a short press will send a CW beacon on the
+displayed frequency. A press will abort the CW beacon. 
+
+A long press of the scq button will start the SCAN mode. This increments 
+the displayed frequency in 200 hz steps for 100 khz. At this point is goes 
+back to the original frequency and starts the scan again.
+
+Pressing scq again stops the scan and puts the frequency back to the 
+original. While in scan mode, pressing AND HOLDING button 1 (vc) will
+pause the scan. Releasing the vc button resumes the scan.
+
+Another control is the rotary encoder and included switch.
+In VFO mode, turning this knob clockwise will increase the frequency
+by STEPSIZE (default 10 hz). Turning counterclockwise decreases
+the frequency by STEPSIZE.
+
+A short press on the encoder switch increases the STEPSIZE to 100 hz.
+Another push increases the STEPSIZE to 1 KHz. Another short press goes 
+back to 10 hz.
+
+A LONG press changes step size to 10 khz. Another LONG press changes STEPSIZE
+to 100 khz. Further LONG presses toggle between 10 khz and 100 khz. 
+
+A SHORT press changes STEPSIZE back to 10 hz. Each change in STEPSIZE will
+place an underline cursor on the digit that is changed while tuning.
+
+----
+
+The KEYLINE (active LOW) keys the transmitter. In SSB mode (USB/LSB) the transmit 
+oscillator is set to the displayed frequency, and the keyline goes high. The "R"
+on the upper right of the display changes to a "T" and the lower left of the 
+display will show reflected power (assuming you wired up the analog lines
+to a directional coupler). 
+On release of the keyline the transmit oscillator is set to 1 mhz, the "T" on the display
+changes back to "R", and the reflected power display changes back to MODE.
+
+In CW mode, the same happens, but a sidetone is generated.
+
+In WSPR and BECN modes, the keyline has no effect. These modes are initiated by the scq button.
+
+----
+
+*** Before Connecting Power for the First Time ***
+
+The DC voltage in line at pin A0 on the arduino connects to a variable
+resistor that connects to DC power. The resistor needs to be set so that 
+A0 reads 2.5 volts with +12.5 volts at the top of the resistor.
+
+*** MAKE SURE THE A0 LINE NEVER SEES MORE THAN 5VDC.***
+
+---
+
+*** When Programming the Arduino Controller ***
+
+For the 3 beacon modes to work correctly, your CALLSIGN must be programmed
+and the code run thru the compiler. Currently the Callsign defaults to D0MMY.
+
+Look for the line #define CALLSIGN "D0MMY" just after the comments in the
+beginning of the code. Your callsign MUST be entered in UPPER CASE.
+
+The RFPOWER setting also needs to be changed. This is a number from 0 thru
+43 that is the dBm power level of your transmitter. This is used for WSPR.
+
+The GRID SQUARE is programmed from the MENU mode and is field changeable.
+The grid square is saved in EEPROM. Your location may change. Power levels and
+call signs typically do not.
+
+There are 2 defines: MINFREQ and MAXFREQ. These set the lower and upper
+frequency tuning limits and are set with the low pass filters your radio will be
+using. Setting these is entirely up to you. 
+
+Receive Frequency: I use a Tayloe detector. This requires the receive frequency
+to be 4 times the displayed frequency. With the PLL setup values I use, the highest
+DISPLAYED frequency is about 30 MHz. This is multiplied by 4 to 120 MHz. Any excursion
+beyond this means you will need to play with the PLL values. 
+
+If you use a DC receiver where the receive frequency is the same (+/-) as the 
+displayed frequency, then you can set the MAXFREQ as high as about 150 MHz.
+
+The MINFREQ should not go lower than about 200 KHz with the current PLL values.
+
+If you use a superhet receiver, you will need to calculate the mixer oscillator
+frequency based on your I.F.
+
+---
+
+*** First Use ***
+
+There are some values that MUST be configured the first time the controller is used.
+To set these, go into the MENU. While holding the VFO/CHANNEL button, turn on
+power. When 'Menu" comes up, release the button. Turn the rotary encoder to select
+the various menu entries, and press VFO/CHANNEL to select the entry.
+
+
+The first is "set defaults". Press the VFO/CHANNEL button until "writing" shows up.
+Release the button. You will see the channels being programmed. Other default
+values will also be loaded into EEPROM. When finished, you will go back to "set defaults".
+
+Rotate the knob to select "Calibrate Osc". Press the VFO/CHANNEL button. You will
+see "Rotate knob" and a 0. The 0 is the frequency offset and can be +/- the reference
+frequency. Right now OSC 2 is putting out 10 mhz. Use a calibrated receiver or
+frequency counter to detect this. Rotate the knob while testing the frequency at OSC 2.
+When it is exactly 10 MHz press the VFO/CHANNEL button. This will save the value.
+
+Two other menu options can be changed: "Sidetone" and "Set Grid Square". The sidetone
+is also the receiver offset in the CW modes and defaults to 700 hz. This can be
+left unchanged.
+
+The default gridsquare is AB01 and can be changed at your convenience.
+
+Power OFF the radio when done. Powering back on WITHOUT the VFO/CHAN button pressed 
+resumes normal operation.
+
+----
+
+*** More Details ***
+
 
 At power up, the frequency and mode are read from memory channel 00 in
 EEPROM. These are used for initial operation. The channel number is then 
@@ -29,11 +180,7 @@ The mode (LSB, USB, etc)
 DC Voltage read from the DC in line
 
 If the VFO/CHANNEL button is pressed while TURNING ON the radio, you will 
-placed in the MENU mode. Details about the MENU mode are discussed later.
-
-If the MODE/RIT button is pressed while turning the radio on, the keyer mode
-will be set to auto (act as a CW keyer). If not pressed, keying will be
-manual (default). (Keyer function not currently implimented).
+placed in the MENU mode. Details about the MENU mode are discussed elsewhere.
 
 Turning the TUNE knob will change the displayed (and RF) frequency. Clockwise
 tunes UP, counter-clockwise tunes DOWN. 
@@ -44,14 +191,14 @@ LSB (lower side band)
 USB (upper side band)
 CW-U (CW, upper side band receive)
 CW-L (CW, lower side band receive)
-SCAN (channel scan, receive USB, see below)
-WSPR (transmit using WSPR (described below), receive upper sideband)
-BECN (transmit CW beacon (described below), receive upper side band)
+WSPR (WSPR beacon)
+BECN (CW beacon)
 and then back to begining (LSB).
 
 A short press on the VFO/CHANNEL button will toggle between VFO mode and 
 CHANNEL mode. In VFO mode, you will tune between MINFREQ (set in the source 
-code as 2.90 MHz) and MAXFREQ (set in source code as 15.2 MHz). 
+code as 2.90 MHz) and MAXFREQ (set in source code as 15.2 MHz). (You can
+change MINFREQ and MAXFREQ in code).
 
 In CHANNEL mode you can select 100 channels from 00 thru 99. Each channel
 holds a frequency and mode.
@@ -66,14 +213,18 @@ go back to channel 00. Rotating the rotary encoder in CHANNEL mode counter-
 clockwise will decrease the channel number by 1 until channel 00. Further 
 rotation past 00 will go to channel 99.
 
-When in CHANNEL mode, a long press will recall the current channel information
-(frequency and mode) to the VFO, deleting whatever was in the VFO at the time.
-Also you will switch from CHANNEL mode to VFO mode when recalling a channel.
+Pressing the encoder switch will increment the channel number by 10, going
+back to 01 after channel 99.
 
-When in VFO mode, a long press will store the current VFO frequency and mode to the
-channel number shown in the display. The current VFO frequency and mode will not
-change. You will see a displayed message that the data was stored showing the channel 
-it was stored to.
+When in CHANNEL mode, a long press of the VFO/CHAN button will recall the 
+current channel information (frequency and mode) to the VFO, deleting whatever 
+was in the VFO at the time. Also you will switch from CHANNEL mode to VFO mode 
+when recalling a channel.
+
+When in VFO mode, a long press of the VFO/CHANNEL button will store the current 
+VFO frequency and mode to the channel number shown in the display. The current 
+VFO frequency and mode will not change. You will see a displayed message that the 
+data was stored showing the channel it was stored to.
 
 If you want to store the current VFO data to a channel you are not on, do the
 following:
@@ -86,45 +237,28 @@ to the displayed channel.
 
 Note: you can tell the current channel by the 2 digit number after the VF on the display.
 
--- INITIAL OPERATION --
-
-The first time the radio is used, certail defaults MUST be set up for proper operation.
-
-1. Your CALLSIGN (located in source code at the programs beginning) must be changed
-to YOUR call. This is used for WSPR and CW beacon.
-
-2. Enter the MENU and set the following: 
-Set Default Channels (Required)
-Set Grid Square (Optional, for WSPR)
-Calibrate the oscillator (Optional, but good to be exact)
-Set Sidetone frequency (Optional, default is 700 hz, change if you want)
-
-Start with the radio powered OFF. Press and hold the VFO/CHAN button. Power ON the radio.
-Select 'set defaults'
-Press VFO/CHAN. The channels will be set.
-Press VFO/CHAN to go back to the menu system.
-
-Power OFF the radio when done. Powering back on WITHOUT the VFO/CHAN button resumes
-normal operation.
 
 
 -- WSPR --
 
-I've added a WSPR beacon. To use it, either dial in one of the wspr frequencies
+To use WSPR, either dial in one of the wspr frequencies
 on the VFO or go to preset channels 8-11. WSPR is time sensitive. It starts at 1 second 
 after the even numbered minutes. After selecting the frequency, short press the 
-MODE button to select WSPR. At 1 second past an even numbered minute, tap the transmit key.
+MODE button to select WSPR. At 1 second past an even numbered minute, press the scq button.
 A wspr transmission will start and continue for the next 110 seconds (appx).
+Pressing the scq button again will abort the send. Do this is you miss the start time
+or if something goes wrong.
 
-Your call sign and grid are encoded in the beginning of the source code, while
-the power level is encoded in the wspr routine (need to change these values for your
-information).
+Your call sign and power are encoded in the beginning of the source code, while
+the grid is set from a menu entry.
 
 -- DC Voltage --
 
 Before powering up this controller, make sure the variable resistor tied to port
 A0 is set so that the voltage is set to 2.5 volts with 12.5 volts at the top of the
 variable resistor.
+
+The DC voltage is updated appx. every 5 seconds.
 
 -- SWR Display --
 
@@ -153,14 +287,14 @@ resume normal operations.
 
 -- Sidetone -- 
 
-During transmit, sidetone is generated at pin A1. This is a square wave and should 
+During CW transmit, sidetone is generated at pin A1. This is a square wave and should 
 be fed to a low pass audio filter to make it sound better. Also the sidetone frequency 
 is used as a cw offset in receive. You can change this. Power off the radio. Press and
 hold the VFO/CHAN button while turning on to enter the MENU mode. Rotate the knob
 until SIDETONE appears. Press the VFO/CHAN button. Now rotating the knob will change
 the frequency of the sidetone (and cw offset) down to 500 hz and up to 1000 hz. The
 sidetone will also be operational while adjusting. When you get the tone you want
-press the VFO/CHAN button to save.
+press the VFO/CHAN button to save the value.
 
 Power cycling the radio will go back to normal operation.
 
@@ -183,29 +317,25 @@ disabled while in RIT mode, but you can tune to any frequency the radio allows
 while in RIT mode. 
 
 Pressing and holding the MODE/RIT button (longer than 300 ms) will turn off the RIT
-mode and reset the receive frequeicy to what it was before selecting RIT.
+mode and reset the receive frequency to what it was before selecting RIT.
 
 -- SCAN --
 
-There is a band scan feature. Press (short) the MODE button to select SCAN. When
-the tuning knob is pressed the displayed frequency will step up 200 hz at a time
-thru 100 KHz. When the frequency + 100 KHz is reached, the frequency will jump 
-back to the starting point and resume scanning. This will repeat until the tuning
-knob is pressed again.
+There is a band scan feature. Press (long press) the scq (Scan/CQ) button to start the scan. 
+The displayed frequency will step up 200 hz at a time thru 100 KHz. When the 
+frequency + 100 KHz is reached, the frequency will jump  back to the starting point and 
+resume scanning. This will repeat until the scq button is pressed again. Pressing the VFO/CHAN
+button while scanning will pause the scan until the VFO/CHANNEL button is released.
 
 This works in VFO mode as well as CHANNEL mode. This is useful in looking for 
 activity on a dead band.
 
-Press the MODE button again to get out of SCAN mode. The default mode while scanning
-is USB.
+The default mode while scanning is USB.
  
-While the radio is scanning, pressing and HOLDING the VFO/CHAN button will pause the 
-scan. As soon as the button is released, scan will resume from the point it was paused.
-
 
 --------------------------------------------
 
 There are a lot of comments in the source code. If you are competent at all, you should
-have no trouble making changes to suit your needs..
+have no trouble making changes to suit your needs.
 
  
