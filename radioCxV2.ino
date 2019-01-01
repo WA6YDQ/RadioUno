@@ -100,7 +100,15 @@
 * Many additional functions I wanted proved to be impossible to impliment due to RAM limitations.
 * The stack and the heap would collide causing weird issues. If you add features be aware of this.
 *
-
+*
+*
+* UPDATES:
+*
+* 12/31/2018 Put static values for cw code and wspr in PROGMEM
+* 12/31/2018 Cleaned up misc compiler warnings (none critical)
+* 12/31/2018 Code considered useful enough to use. Still some things to be added (none necessary)
+* 12/30/2018 Removed 2nd tx keyline, made it 3rd button for scan and cq option
+* 12/30/2018 Wrote cw char send routine/beacon routine/cq send routine
 */
 
 
@@ -122,18 +130,23 @@
 
 /****************************/
 
+#define CALLSIGN "D0MMY"    // Your call sign for wspr, cw, beacon. Change before use! Use UPPER CASE.
+// grid square is set from menu and stored in eeprom
+#define RFPOWER 13          // rf power used in wspr (values: 0,3,7,10,13,17,30,23,27,30,33,37,40,43)
+
+/****************************/
+
 
 
 
 #include <LiquidCrystal.h>
 #include <stdlib.h>
 #include <EEPROM.h>
-#include <Wire.h>
-//#include <asserts.h>
-#include <Adafruit_SI5351.h>
-//#include <errors.h>
-
-
+#include <Wire.h>            // for I2C port expander
+#include <Adafruit_SI5351.h> // for clock osc
+#include <avr/pgmspace.h>    // probably not needed
+#include <avr/io.h>          // probably not needed
+#include <string.h>
 
 
 Adafruit_SI5351 clockgen = Adafruit_SI5351();  // you will need to install the Adafruit Si5351 libs
@@ -151,16 +164,18 @@ const int dcVoltage = A0;  // read dc voltage (thru 10K trimmer resistor) on A0
 const int toneOut = A1;    // audio tone out while in transmit on A1
 const int refIn = A3;      // dc reflected power input (used in transmit)
 const int vc = 3;          // pushbutton, vfo/channel and sto/rcl on D3
-const int keyIn1 = 11;     // key line (dot)  D11
-const int mm = 12;         // Mode 2/Menu D12
-const int mr = A2;         // Mode switch (RIT long press)
+const int keyIn1 = 11;     // key line  (D11)
+const int scq = 12;        // Scan/Send CQ (D12)
+const int mr = A2;         // Mode/RIT
 
 
-const char *call = "D0MMY"; // WSPR Call Sign (change for your call)
-// grid is set from menu and stored in eeprom
-// power (dBm) is set from the wspr routine
+
+// used for WSPR, beacon and sending CQ message
+const char call[] = CALLSIGN;       
+char cwMsg[] = " \0";    // initialize cw play message
 
 
+// define variables
 
 float VOLT;                 // read DC Voltage on pin A0
 float freq;                 // main frequency in Hz
@@ -180,14 +195,39 @@ int   CALOFFSET;            // calibrate setting for +/- 0 hz
 
 #define MAXMODE 6           // set max number of modes
 byte MODE;
-const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","SCAN","WSPR"};
+const char mode[MAXMODE][6] = {"LSB ","USB ","CW-U","CW-L","WSPR","BECN"};
 
+/* the following are constants used in sendCw()   */
+const PROGMEM char numCw[10][7]  = {
+            "333330","133330","113330","111330","111130",   // 0-4
+            "111110","311110","331110","333110","333310"    // 5-9
+            }; 
+
+const char chrCw[26][6] PROGMEM = {
+            "130","31110","31310","3110","10","11310",      // a-f
+            "3310","11110","110","13330","3130","13110",    // g-l
+            "330","310","3330","13310","33130","1310",      // m-r
+            "1110","30","1130","11130","1330","31130","31330","33110"  // s-z
+            };
+
+/* the following are constants used in wspr */
+const byte sync[] PROGMEM  = {  // note byte in place of char
+    1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0,
+    1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+    0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1,
+    0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0,
+    1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1,
+    1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1,
+    0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1,
+    1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0,
+    0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0
+};
 
 /* set up hardware ports etc */ 
 void setup() {
   
    /* init LCD displays */
-   lcd1.begin(16,2);   // LCD #1 is frequency
+   lcd1.begin(16,2);   // initialize LCD display
    
    /* set up input devices */
    pinMode(knobsw, INPUT_PULLUP);
@@ -195,7 +235,7 @@ void setup() {
    pinMode(knobDir, INPUT_PULLUP);
    pinMode(vc, INPUT_PULLUP);
    pinMode(keyIn1, INPUT_PULLUP);
-   pinMode(mm, INPUT_PULLUP);
+   pinMode(scq, INPUT_PULLUP);
    pinMode(mr, INPUT_PULLUP);
    analogReference(DEFAULT);    // use 5vdc for this 5v arduino
    
@@ -215,7 +255,7 @@ void setup() {
    /* initialize Si5351 oscillator */
    if (clockgen.begin() != ERROR_NONE) {
      lcd1.home();
-     lcd1.print(F("CLK ERR"));        // if it doesn't start up, no reason to continue
+     lcd1.print(F("CLK ERR"));     // if it doesn't start up, no reason to continue
      while (true) continue;        // so loop until power cycled
    }
       
@@ -381,6 +421,8 @@ void Recall() {
 /******************************/
 
 void updateDcVolt() {
+
+    
   // read analog pin, divide by constant for true voltage (I use a 10k multiturn pot)
   extern float VOLT;
   char buf[5];
@@ -393,7 +435,7 @@ void updateDcVolt() {
   lcd1.print(buf);
   lcd1.setCursor(15,1);
   lcd1.write("V");  // show as voltage
-  
+
   return;
 }
  
@@ -647,7 +689,8 @@ void menu() {
   
   // these next 2 are for grid square calcs
   char gs[5];
-  const String PROGMEM  sChar = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";  // PROGMEM is ignored. Grrr...
+  //char *sChar = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  char sChar[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   
   vfoChan = 2;    // in menu mode
   menu_sel = 0;   // select menu item #
@@ -1029,7 +1072,6 @@ void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pres
     int freqMSB;
     unsigned int i;
     
-    while (digitalRead(knobsw) == LOW) continue;    // wait till released
     tempfreq = freq;
     while (true) {
         freq = tempfreq;   // reset to beginning
@@ -1044,16 +1086,17 @@ void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pres
             updateOsc();
             if (digitalRead(vc) == LOW)        // pressing/holding vc will pause the scan
                 while (digitalRead(vc) == LOW) continue;
-            if (digitalRead(knobsw) == LOW) break;  // pressing the rotary encoder sw will stop the scan
+            if (digitalRead(scq) == LOW) break;  // pressing the scq switch will stop the scan
             delay(75); // 75ms per step
         }
-        if (digitalRead(knobsw) == LOW) break;
+        if (digitalRead(scq) == LOW) break;
     }
     freq = tempfreq;
     updateFreq();
     updateBand();
     updateOsc();
-    while (digitalRead(knobsw) == LOW) continue;
+    showTune();
+    while (digitalRead(scq) == LOW) continue;
     delay(DEBOUNCE);
     return;
 }
@@ -1081,7 +1124,7 @@ void loop() {
    int modeBak = 0;
    extern int CALOFFSET;
    rit = 0;                // start with no rit
-   
+  
 /* if vfo/chan button (vc) is pressed during power-up, jump
  * to MENU mode to calibrate the oscillator & change settings 
  * that don't normally get accessed.
@@ -1142,19 +1185,19 @@ void loop() {
      /* test rotary encoder SWITCH - change step size based on long/short push, start special modes */
      if (digitalRead(knobsw) == LOW) {
          
-        if (MODE == 4) {        // scan mode - scan 100kc from current freq (vfo or chan)
-            scan();
-            delay(DEBOUNCE);
-            showTune();
-            freqMSB = (int)(freq/1000000);    // get new MHz value (may have changed during scan)
-            continue;
-        }
-        
-        if (MODE == 5) {       // WSPR mode, displayed freq is active - send 1 sequence then return
+        if (MODE == 4) {       // WSPR mode, displayed freq is active - send 1 sequence then return
             tempfreq = freq;
-            wspr(freq);
+            wspr(freq);        // start transmission from displayed frequency (either vfo or channel)
             freq = tempfreq;
             updateFreq();
+            updateOsc();
+            showTune();
+            continue;
+        }
+
+        if (MODE == 5) {        // cw beacon
+            beacon();
+            updateFreq();    // restore display etc.
             updateOsc();
             showTune();
             continue;
@@ -1301,6 +1344,7 @@ void loop() {
     
     if (digitalRead(keyIn1) == 0) {    // TX key pressed 
       if (MODE > 3) continue;          // only keyup for cw/ssb modes
+      delay(10);                       // debounce the key
       if ((MODE == 2) || (MODE == 3))    
           tone(toneOut, SIDETONE);     // turn on sidetone for cw modes
       txKey();                         // key the transmitter
@@ -1335,7 +1379,7 @@ void loop() {
      if (digitalRead(mr) == 1) {    // short press - MODE function
         if (rit) continue;       // don't change modes in rit mode  
         MODE += 1;  // change to next mode 
-        if (MODE > 5) MODE = 0;      // cycle thru
+        if (MODE > MAXMODE-1) MODE = 0;      // cycle thru
         updateMode();   // update LCD/radio registers 
         updateOsc();    // switch rx offset based on mode
         showTune();
@@ -1366,6 +1410,30 @@ void loop() {
      while (digitalRead(mr) == 0) continue;
      delay(DEBOUNCE);
     }  // done
+    
+    
+    
+    /* test scan/send cq button */
+    if (digitalRead(scq) == LOW) {
+        delay(300);            // test for short/long press
+        if (digitalRead(scq) == HIGH) {    // short press - scan function
+            scan();
+            delay(DEBOUNCE);
+            showTune();
+            freqMSB = (int)(freq/1000000);    // get new MHz value (may have changed during scan)
+            continue;
+        }
+        if (digitalRead(scq) == LOW) {    // long press - send cq message
+            while (digitalRead(scq) == LOW) continue;
+            delay(DEBOUNCE);
+            sendCQ();
+            updateFreq();
+            updateBand();
+            updateOsc();
+            showTune();
+            continue;
+        }
+    }
     
     
 
@@ -1401,7 +1469,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   extern float freq;
   extern int chan;
   extern byte MODE;
-  int i;
+  //int i;
   
   // EEPROM storage: frequency (4 bytes), mode (1 byte)
   // format: 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband, 4=Burst, 5=WSPR, 6=BEACON
@@ -1520,11 +1588,11 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   };
   
   /* set the mode for the memory channels */
-  // 0=lsb, 1=usb, 2=cw-upper sideband, 3=cw-lower sideband, 4=WSPR
+  // 0=lsb, 1=usb, 2=cw-upper sideband, 3=cw-lower sideband, 4=WSPR, 5=Beacon
   
-  const byte defaultMode[100] PROGMEM = {
+    byte defaultMode[100] PROGMEM = {
     3,3,3,3,3,          // ch 00 - 04 
-    0,0,1,5,5,5,5,      // ch 05 - 11
+    0,0,1,4,4,4,4,      // ch 05 - 11
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 12 - 25
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 26 - 50
     1,1,1,1,1,1,1,1,1,1,  // 51 - 60
@@ -1557,8 +1625,8 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   
   // save default grid square
   EEPROM.write(gridAddr+0,'A');    // save grid to eeprom
-  EEPROM.write(gridAddr+1,'B');    // yeah, it's ugly. Running out of stack
-  EEPROM.write(gridAddr+2,'0');    // and this gets the job done
+  EEPROM.write(gridAddr+1,'B');    // yeah, it's ugly. Running out of ram
+  EEPROM.write(gridAddr+2,'0');    // and this gets the job done.
   EEPROM.write(gridAddr+3,'1');
   
   // done
@@ -1587,19 +1655,9 @@ void wspr(float wfreq) { // (frequency sent from calling routine)
 
 /********* START of encode routine *********/
 
-const byte sync[] PROGMEM = {  // note byte inplace of char
-    1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0,
-    1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0,
-    0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1,
-    0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0,
-    1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1,
-    1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1,
-    0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1,
-    1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0,
-    0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0
-};
 
-const byte rdx[] PROGMEM = {   // note byte inplace of char
+
+byte rdx[]  = {   // note byte in place of char
     0, 128, 64, 32, 160, 96, 16, 144, 80, 48, 112, 8, 136, 72, 40, 104, 24,
     152, 88, 56, 120, 4, 132, 68, 36, 100, 20, 148, 84, 52, 116, 12, 140,
     76, 44, 108, 28, 156, 92, 60, 124, 2, 130, 66, 34, 98, 18, 146, 82, 50,
@@ -1612,9 +1670,10 @@ const byte rdx[] PROGMEM = {   // note byte inplace of char
     23, 151, 87, 55, 119, 15, 143, 79, 47, 111, 31, 159, 95, 63, 127 
 };
 
-  char msg[162];
+  byte msg[162];
 
-  int n,i,xx;
+  int n,i;
+  // int xx;     // debug code
   unsigned long time;
   
   //float shift = 12000.0/8192.0;  // this is the ideal way to do it
@@ -1626,7 +1685,7 @@ const byte rdx[] PROGMEM = {   // note byte inplace of char
   extern float freq;
   
   // encode the call sign
-  long c = encodecallsign(call);
+ long c = encodecallsign(CALLSIGN);
  
   // encode the grid square from eeprom
   char gsq[5];
@@ -1636,13 +1695,13 @@ const byte rdx[] PROGMEM = {   // note byte inplace of char
   long g = encodegrid(gsq);
   
   // encode the power (dBm)
-  long p = encodepower(10);
+  long p = encodepower(RFPOWER);  // was 10
  
   int mp = 0 ;
   unsigned long acc = 0;
 
   // initialize message
-  for (i=0; i<162; i++) msg[i] = sync[i];
+  for (i=0; i<162; i++) msg[i] = pgm_read_byte_near(sync + i);    // was sync[i]
 	
  
     /* by default, arduino does not do math well enough (think k&r c from '68) */
@@ -1677,7 +1736,7 @@ const byte rdx[] PROGMEM = {   // note byte inplace of char
     
   lcd1.home();
   lcd1.print(F("Sending          "));
-  xx=0;
+  // xx=0;        // debug code
   for (i=0; i<162; i++) {
     n = msg[i]; 
     /*
@@ -1707,16 +1766,19 @@ int chval1(int ch) {
     if (isdigit(ch)) return ch - '0';
     if (isalpha(ch)) return 10 + toupper(ch) - 'A';
     if (ch == ' ') return 36;
+    return 0;    // keep compiler happy - will never reach here
 }
 
 int chval2(int ch) {
     if (isalpha(ch)) return toupper(ch) - 'A';
     if (ch == ' ') return 26;
+    return 0;    // keep compiler happy - will never reach here
 }
 
-long encodecallsign(const char *callsign) {
+
+long encodecallsign(const char *callsign) { // const
     /* find the first digit... */
-    int i;
+    unsigned int i;
     long rc;
     char call[6];
 
@@ -1725,12 +1787,10 @@ long encodecallsign(const char *callsign) {
     if (isdigit(callsign[1])) {
 	/* 1x callsigns... */
 	for (i=0; i<strlen(callsign); i++)
-        //for (i=0; i<sizeof(callsign); i++)
 	   call[1+i] = callsign[i];
     } else if (isdigit(callsign[2])) {
 	/* 2x callsigns... */
 	for (i=0; i<strlen(callsign); i++)
-        //for (i=0; i<sizeof(callsign); i++)
 	   call[i] = callsign[i];
     } else {
 	return 0;
@@ -1769,8 +1829,127 @@ int parity(unsigned long x) {  // returns 1 or 0, x is a BIG #
 }
 
 
+/*****************/
+/**** Send CQ ****/
+/*****************/
 
-        
+void sendCQ() { // send a cq message 
+    unsigned int i;
+    char cwstg[] = "CQ CQ CQ DE ";
+    for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]); // strlen
+    for (i=0; i<strlen(call); i++) sendCw(call[i]);      // send call
+    sendCw(' ');
+    for (i=0; i<strlen(call); i++) sendCw(call[i]);      // send call
+    sendCw(' ');
+    sendCw('K');
+    return;
+}
+
+
+
+/******************/
+/****  BEACON  ****/
+/******************/
+
+void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until knob switch pressed at most 1/2 second
+    
+    unsigned int i; 
+    int oldVfoChan;    
+    char *cwstg = "\0";
+    oldVfoChan = vfoChan;    // save existing
+    vfoChan = 3;             // ignore knob rotation 
+    while (true) {
+        txKey();
+        for (i=0; i<16; i++) {    // send 16 1/2 second sequential transmissions
+            txKey();
+            delay(500);
+            if (digitalRead(knobsw) == LOW) {    // switch press ends beacon, resumes normal op
+                txDekey();
+                while (digitalRead(knobsw) == LOW) continue;
+                vfoChan = oldVfoChan;        // restore settings
+                return;
+            }
+        }
+        txDekey();
+        delay(1000);     // 1 second between carrier and ID
+        cwstg = "DE ";
+        for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send DE
+        for (i=0; i<strlen(call); i++) sendCw(call[i]);      // send call
+        sendCw(' ');                                         // space between call/grid
+        for (i=0; i<4; i++) sendCw(EEPROM.read(gridAddr+i)); // send grid
+        cwstg = " BEACON K";
+        for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send BEACON
+        delay(1000);     // 1 second between ID and carrier
+        continue;        // continue with 8 seconds carrier followed by ID
+    }
+} 
+
+
+
+/*************************************/
+/* Transmit a single character as CW */
+/*************************************/
+
+void sendCw(char cwch) { 
+
+// initialisation at start of code for this routine (global vars in flash mem)
+
+    // CW Speed is (1.2/WPM) * 1000 
+    int SPEED = 15;    // speed is WPM
+    int DLY = (1.2/SPEED)*1000;    
+    unsigned int x, charnum;
+    char dly;
+    while (digitalRead(knobsw) == LOW) continue;
+    delay(DEBOUNCE);
+    
+ 
+    if (cwch == '\0') return;
+    
+    if (cwch == ' ') {    
+        // is a space
+        delay(DLY*3);
+        return;
+    }
+    
+    // is a number
+    if (isDigit(cwch)) {
+        charnum = cwch - '0';
+        for (x=0; x<6; x++) {
+            dly = pgm_read_byte_near(numCw[charnum]+x);    // use flash to store values
+            if (dly == '0') {    // terminating char is 0 - delay only
+                delay(DLY*3);    // delay 3 bit lengths between chars
+                continue;
+            }
+            txKey();
+            if (dly == '1') delay(DLY*1);    // delay 1 bit length
+            if (dly == '3') delay(DLY*3);    // delay 3 bit lengths
+            txDekey();
+            delay(DLY*1);    // delay 1 bit length 
+            continue;
+        }
+    }
+    
+    // is a letter
+    if (isAlpha(cwch)) {
+        charnum = cwch - 'A';
+        for (x=0; x < strlen_P(chrCw[charnum]); x++) {
+            dly = pgm_read_byte_near(chrCw[charnum]+x);    // read data from flash
+            if (dly == '0') {    // terminating char is 0 - delay only
+                delay(DLY*3);    // delay 3 bit lengths between chars
+                continue;
+            }
+            txKey();
+            if (dly == '1') delay(DLY*1);    // delay 1 bit length
+            if (dly == '3') delay(DLY*3);    // delay 3 bit lengths
+            txDekey();
+            delay(DLY*1);    // delay 1 bit length
+            continue;
+        }
+    }
+    // char is something unknown or routine is finished
+
+    return;
+}
        
 
 
