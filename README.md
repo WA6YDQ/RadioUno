@@ -1,18 +1,25 @@
 # RadioUno
 
-Changes on 12/31/2018:
+## Changes on 12/31/2018:
+
 > Removed 2nd TX Key line. Replaced it with a 3rd button.
+
 > This button has 2 functions: 
 Short Press: start scan. 
 Long Press: Send CQ message using your call sign (entered in source code)
+
 > Removed scan function from mode button. Has it's own button now (see above)
+
 > Added CQ Send routine. Long press on button 3 sends a 3x2 CQ message on the current frequency
+
 > Added CW Beacon. Press MODE until function says BECN. Press rotary encoder knob. 
+
 A CW beacon will be sent in the following format: 
 8 Seconds of carrier on the current frequency. Your callsign. Your grid square. The word
 'BEACON and then the sequence begins again. It will continue forever or until 
 you press the rotary encoder knob (switch) for about 1/2 second. That stops the 
 beacon and returns you to normal operation.
+
 > Moved most of the constants to flash memory and wrote routines to read them.
 Saved a LOT of grief with RAM space running low.
 
