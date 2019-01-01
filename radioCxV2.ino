@@ -104,6 +104,8 @@
 *
 * UPDATES:
 *
+*  1/01/2019 Changed encoder sw press to scq button. scq short - beacon/cq. Long/scan
+* 12/31/2018 When in channel mode, encoder button press increments channel by 10
 * 12/31/2018 Put static values for cw code and wspr in PROGMEM
 * 12/31/2018 Cleaned up misc compiler warnings (none critical)
 * 12/31/2018 Code considered useful enough to use. Still some things to be added (none necessary)
@@ -172,7 +174,7 @@ const int mr = A2;         // Mode/RIT
 
 // used for WSPR, beacon and sending CQ message
 const char call[] = CALLSIGN;       
-char cwMsg[] = " \0";    // initialize cw play message
+char cwMsg[] = " \0";       // initialize cw play message
 
 
 // define variables
@@ -540,7 +542,7 @@ void updateOsc() {
    float rxFreq;  // rx freq = 4x freq, +/- ssb/cw offset, +/- caloffset
    extern int CALOFFSET;
    
-   rxFreq = 0;
+   rxFreq = 0;    // keep compiler from bitching about uninitialized vars
    VB = 1000000.0;
    
    // set up the receive frequency (no offset for ssb needed with qrp-labs rx with poly)
@@ -551,6 +553,9 @@ void updateOsc() {
    if (MODE >  3) rxFreq = freq; // all else
    
    rxFreq += CALOFFSET;
+   
+   /* When rxFreq > MAXFREQ set rxFreq to 1 mhz. (Keep si5351 happy) */
+   if (rxFreq > MAXFREQ) rxFreq = 1000000;    // channels can contain freq above MAXFREQ (6M beacon)
    
    rxFreq *= 4.0;      // using a tayloe detector, rx freq is 4X display freq
    VALUE = rxFreq/VB;
@@ -575,11 +580,8 @@ void updateMode() {
   extern byte MODE;
 /* 
     |   7  |   6   |   5  |  4  |  3  |   2   |   1  |   0  |
-     cw/ssb usb/lsb    tx               11-15   8-11    4-8
-      
-4-8 is a high pass at 4, low pass at 8 mc
-8-11 is a high pass at 8 mc, low pass at 11 mc
-11-15 is a high pass at 11 mc, low pass at 15 mc
+     cw/ssb usb/lsb    tx          (band filter settings)
+
 
 cw/ssb is 0 for cw, 1 for ssb
 usb/lsb is 0 for lsb, 1 for usb
@@ -633,9 +635,9 @@ void updateBand() {
   extern byte radioReg;
 /* 
     |   7  |   6   |   5  |  4  |  3  |   2   |   1  |   0  |
-     cw/ssb usb/lsb    tx        11-15   8-11    5-8   3-5
+     cw/ssb usb/lsb    tx        11-15   8-11    5-8   2-5
      
-3-5 is a high pass at 3 mc, low pass at 5 mc 
+2-5 is a high pass at 3 mc, low pass at 5 mc 
 5-8 is a high pass at 5, low pass at 8 mc
 8-11 is a high pass at 8 mc, low pass at 11 mc
 11-15 is a high pass at 11 mc, low pass at 15 mc
@@ -643,6 +645,7 @@ void updateBand() {
 cw/ssb is 0 for cw, 1 for ssb
 usb/lsb is 0 for lsb, 1 for usb
 tx = 0 for RX, 1 for TX
+
 */ 
   if ((freq >= 2900000) && (freq < 5000000)) { // 2.9 mc thru 5 mc
     radioReg &= B1110000; radioReg |= B00000001;  // set band 1 line
@@ -689,7 +692,6 @@ void menu() {
   
   // these next 2 are for grid square calcs
   char gs[5];
-  //char *sChar = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   char sChar[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   
   vfoChan = 2;    // in menu mode
@@ -1064,7 +1066,7 @@ void txDekey() {   // unkey TX, set power on for osc 0 and 2
 /**** SCAN ****/
 /**************/
 
-void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pressing the encoder 
+void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pressing the scq 
                // switch stops and returns to the main loop. You can be in vfo or channel mode.
                // does not stop on activity, just useful to check activity.
     extern float freq;
@@ -1184,27 +1186,15 @@ void loop() {
      
      /* test rotary encoder SWITCH - change step size based on long/short push, start special modes */
      if (digitalRead(knobsw) == LOW) {
-         
-        if (MODE == 4) {       // WSPR mode, displayed freq is active - send 1 sequence then return
-            tempfreq = freq;
-            wspr(freq);        // start transmission from displayed frequency (either vfo or channel)
-            freq = tempfreq;
-            updateFreq();
-            updateOsc();
-            showTune();
-            continue;
-        }
 
-        if (MODE == 5) {        // cw beacon
-            beacon();
-            updateFreq();    // restore display etc.
-            updateOsc();
-            showTune();
-            continue;
-        }
-
-        
-        if (vfoChan == 1) {  // channel mode - do nothing
+        if (vfoChan == 1) {  // channel mode - increment channel number by 10. roll over at 100
+          chan += 10;
+          if (chan > 99) chan = 1;
+          Recall();
+          updateFreq();
+          updateMode(); 
+          updateOsc();     
+          showTune();
           while (digitalRead(knobsw) == LOW) continue;
           delay(DEBOUNCE);
           continue;
@@ -1413,28 +1403,35 @@ void loop() {
     
     
     
-    /* test scan/send cq button */
+    /* test scan/send cq button (scan - long press, send cq/wspr/beacon - short press)  */
     if (digitalRead(scq) == LOW) {
         delay(300);            // test for short/long press
-        if (digitalRead(scq) == HIGH) {    // short press - scan function
+        if (digitalRead(scq) == HIGH) {                  // short press - beacon modes/cq mode
+            if ((MODE == 2) || (MODE == 3)) sendCQ();    // CW mode, send CQ
+            if (MODE == 4) {                    // WSPR mode, transmit from the displayed freq
+                tempfreq = freq;
+                wspr(freq);  
+                freq = tempfreq;
+            }
+            if (MODE == 5) beacon();           // Beacon mode
+            updateFreq();
+            updateBand();
+            updateOsc();
+            showTune();
+            continue;  
+        }
+        if (digitalRead(scq) == LOW) {    // long press - scan
+            while (digitalRead(scq) == LOW) continue;
+            delay(DEBOUNCE);
             scan();
             delay(DEBOUNCE);
             showTune();
             freqMSB = (int)(freq/1000000);    // get new MHz value (may have changed during scan)
             continue;
         }
-        if (digitalRead(scq) == LOW) {    // long press - send cq message
-            while (digitalRead(scq) == LOW) continue;
-            delay(DEBOUNCE);
-            sendCQ();
-            updateFreq();
-            updateBand();
-            updateOsc();
-            showTune();
-            continue;
-        }
     }
-    
+   
+            
     
 
     /* update the DC voltage reading once every 5 seconds or so */
@@ -1537,12 +1534,12 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
     11175000,  // USAF   ""      ch 53
      6739000,  // USAF   ""      ch 54
       
-    10000000,  //  Placeholder   ch 55
-    10000000,  //      ""        ch 56
+     8152000,  //  Marine chat   ch 55
+    10000000,  //  Placeholder   ch 56
     10000000,  //      ""        ch 57
     10000000,  //      ""        ch 58
     10000000,  //      ""        ch 59
-    10000000,  //      ""        ch 60
+    50081000,  //  50 Mhz Beacon ch 60
     
      5330500,  // US Ham 60M ch1 ch 61
      5346500,  // US Ham 60M ch2 ch 62
@@ -1595,7 +1592,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
     0,0,1,4,4,4,4,      // ch 05 - 11
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 12 - 25
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 26 - 50
-    1,1,1,1,1,1,1,1,1,1,  // 51 - 60
+    1,1,1,1,1,1,1,1,1,5,  // 51 - 60
     1,1,1,1,1,         // 61 - 65 (usb)
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 66 - 80
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1   // 81 - 99
@@ -1752,6 +1749,12 @@ byte rdx[]  = {   // note byte in place of char
     txKey();  // freq got updated, call key routine to change on the fly
     time = millis() + txtime;
     while (millis() < time) continue; // wait until 0.683 seconds pass
+    if (digitalRead(scq) == LOW) {    // scq switch pressed - exit wspr routine (abort)
+        txDekey();
+        while (digitalRead(scq) == LOW) continue;
+        delay(DEBOUNCE);
+        return;
+    }
   }
   txDekey();
   return;
@@ -1851,7 +1854,7 @@ void sendCQ() { // send a cq message
 /****  BEACON  ****/
 /******************/
 
-void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until knob switch pressed at most 1/2 second
+void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until scq switch pressed at most 1/2 second
     
     unsigned int i; 
     int oldVfoChan;    
@@ -1863,9 +1866,9 @@ void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until kn
         for (i=0; i<16; i++) {    // send 16 1/2 second sequential transmissions
             txKey();
             delay(500);
-            if (digitalRead(knobsw) == LOW) {    // switch press ends beacon, resumes normal op
+            if (digitalRead(scq) == LOW) {    // switch press ends beacon, resumes normal op
                 txDekey();
-                while (digitalRead(knobsw) == LOW) continue;
+                while (digitalRead(scq) == LOW) continue;
                 vfoChan = oldVfoChan;        // restore settings
                 return;
             }
@@ -1877,7 +1880,7 @@ void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until kn
         for (i=0; i<strlen(call); i++) sendCw(call[i]);      // send call
         sendCw(' ');                                         // space between call/grid
         for (i=0; i<4; i++) sendCw(EEPROM.read(gridAddr+i)); // send grid
-        cwstg = " BEACON K";
+        cwstg = " BEACON";
         for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send BEACON
         delay(1000);     // 1 second between ID and carrier
         continue;        // continue with 8 seconds carrier followed by ID
