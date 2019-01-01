@@ -10,7 +10,7 @@ the channel number by 10. Rolls over at 100 back to 1.
 > This button has 2 functions: 
 Long Press: start scan. 
 
-Short Press: Send CQ message using your call sign (entered in source code). (in CW mode)
+> Short Press: Send CQ message using your call sign (entered in source code). (in CW mode)
 Start WSPR transmission (in WSPR mode). Press again to abort.
 Start CW Beacon (in BECN mode). Press again to abort.
 No effect in LSB/USB.
