@@ -104,6 +104,7 @@
 *
 * UPDATES:
 *
+*  1/02/2019 Change memory allocation in beacon()
 *  1/02/2019 Update comments (documentation changes)
 *  1/01/2019 Changed encoder sw press to scq button. scq short - beacon/cq. Long/scan
 * 12/31/2018 When in channel mode, encoder button press increments channel by 10
@@ -1859,10 +1860,9 @@ void sendCQ() { // send a cq message
 
 void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until scq switch pressed at most 1/2 second
     
-    unsigned int i; 
+    unsigned int i; // strlen returns unsigned int
     int oldVfoChan;    
-    char *cwstg = (char*)"DE ";
-    
+    char cwstg[12] = "       ";
     oldVfoChan = vfoChan;    // save existing
     vfoChan = 3;             // ignore knob rotation 
     while (true) {
@@ -1879,11 +1879,12 @@ void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until sc
         }
         txDekey();
         delay(1000);          // 1 second between carrier and ID
+        strcpy(cwstg,"DE ");
         for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send DE
         for (i=0; i<strlen(call); i++) sendCw(call[i]);      // send call
         sendCw(' ');          // space between call/grid
         for (i=0; i<4; i++) sendCw(EEPROM.read(gridAddr+i)); // send grid
-        char *cwstg = (char*)" BEACON";
+        strcpy(cwstg," BEACON");
         for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send BEACON
         delay(1000);         // 1 second between ID and carrier
         continue;            // continue with 8 seconds carrier followed by ID
