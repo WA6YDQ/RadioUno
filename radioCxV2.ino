@@ -214,7 +214,7 @@ const char chrCw[26][6] PROGMEM = {
             };
 
 /* the following are constants used in wspr */
-const byte sync[] PROGMEM  = {  // note byte in place of char
+const byte sync[] PROGMEM  = { 
     1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0,
     1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0,
     0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1,
@@ -1847,7 +1847,7 @@ void sendCQ() { // send a cq message
     sendCw(' ');
     for (i=0; i<strlen(call); i++) sendCw(call[i]);      // send call
     sendCw(' ');
-    sendCw('K');
+    sendCw('K');    // Use UPPER CASE
     return;
 }
 
@@ -1861,7 +1861,8 @@ void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until sc
     
     unsigned int i; 
     int oldVfoChan;    
-    char *cwstg = "\0";
+    char *cwstg = (char*)"DE ";
+    
     oldVfoChan = vfoChan;    // save existing
     vfoChan = 3;             // ignore knob rotation 
     while (true) {
@@ -1877,16 +1878,15 @@ void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until sc
             }
         }
         txDekey();
-        delay(1000);     // 1 second between carrier and ID
-        cwstg = "DE ";        // Use UPPER CASE
+        delay(1000);          // 1 second between carrier and ID
         for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send DE
         for (i=0; i<strlen(call); i++) sendCw(call[i]);      // send call
-        sendCw(' ');                                         // space between call/grid
+        sendCw(' ');          // space between call/grid
         for (i=0; i<4; i++) sendCw(EEPROM.read(gridAddr+i)); // send grid
-        cwstg = " BEACON";    // Use UPPER CASE
+        char *cwstg = (char*)" BEACON";
         for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send BEACON
-        delay(1000);     // 1 second between ID and carrier
-        continue;        // continue with 8 seconds carrier followed by ID
+        delay(1000);         // 1 second between ID and carrier
+        continue;            // continue with 8 seconds carrier followed by ID
     }
 } 
 
