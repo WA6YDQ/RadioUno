@@ -146,7 +146,7 @@ left unchanged.
 The default gridsquare is AB01 and can be changed at your convenience.
 
 Power OFF the radio when done. Powering back on WITHOUT the VFO/CHAN button pressed 
-resumes normal operation.
+starts normal operation.
 
 ----
 
@@ -173,10 +173,11 @@ Left, top line:
 VF (vfo mode)
 01 (the memory channel in CHANNEL mode is set for channel 01)
 The transmit frequency (receive frequency will differ in certain modes)
-A 'R' for receive.
+A 'R' for receive. (This switches to 'T' in any transmit mode).
 
 Left, bottom line:
 The mode (LSB, USB, etc)
+If active, 'RIT'.
 DC Voltage read from the DC in line
 
 If the VFO/CHANNEL button is pressed while TURNING ON the radio, you will 
@@ -241,16 +242,18 @@ Note: you can tell the current channel by the 2 digit number after the VF on the
 
 -- WSPR --
 
-To use WSPR, either dial in one of the wspr frequencies
-on the VFO or go to preset channels 8-11. WSPR is time sensitive. It starts at 1 second 
-after the even numbered minutes. After selecting the frequency, short press the 
-MODE button to select WSPR. At 1 second past an even numbered minute, press the scq button.
+To use WSPR, either dial in one of the wspr frequencies on the VFO or go to preset 
+channels 8-11. WSPR is time sensitive. It starts at 1 second  after the even numbered 
+minutes. After selecting the frequency, short press the  MODE button to select WSPR. 
+
+At 1 second past an even numbered minute, press the scq button.
 A wspr transmission will start and continue for the next 110 seconds (appx).
-Pressing the scq button again will abort the send. Do this is you miss the start time
-or if something goes wrong.
+If you want to abort the transmission, press the scq button. Otherwise the 
+transmission will stop normally after about 110 seconds and return to receive mode.
 
 Your call sign and power are encoded in the beginning of the source code, while
-the grid is set from a menu entry.
+the grid is set from a menu entry. These will need to be set for WSPR to operate
+correctly. See the notes above.
 
 -- DC Voltage --
 
@@ -263,19 +266,21 @@ The DC voltage is updated appx. every 5 seconds.
 -- SWR Display --
 
 Pin A3 is tied to a directional coupler to read reflected power during transmit.
-The lower pard of the LCD display will show a set of vertical bars corrosponding
+The lower part of the LCD display will show a set of vertical bars corrosponding
 to reflected power during transmit. The greater number of bars the greater the
-reflected power.
+reflected power. Note that this is a relative reading only.
 
 -- Setting Default Channels --
 
 Pressing and holding the VFO/CHANNEL button during power on will enter the MENU mode.
 Rotating the knob to 'set default chan'. Press the VFO/MEM button. You will see
-'working' displayed. The channel number will be displayed as each channel is loaded.
+'working' displayed. Release the VFO/CHAN button. The channel number will be displayed 
+as each channel is loaded.
+
 After a couple seconds, you will see 'done'. Power cycle the controller and channels 
-00 thru 99 will be set to the frequencies and modes 
-seen in the end of the source code. NOTE: This also reset the oscillator calibration to 
-0 hz and the sidetone frequency to 700 hz.
+00 thru 99 will be set to the frequencies and modes seen in the bottom of the source code. 
+NOTE: This also reset the oscillator calibration to  0 hz and the sidetone frequency 
+to 700 hz and set the grid square to AB01.
 
 -- Calibrating the Oscillator --
 
