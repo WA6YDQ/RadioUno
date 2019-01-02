@@ -29,11 +29,11 @@
 * of these routines, but that would make it harder for a beginning programmer
 * to understand. As long as there is available memory, I keep it verbose.
 *
-* TODO: add keyer functions
+* TODO: 
 *       redo the osc code. Some freqs I get weird noise I suspect might be caused by jitter etc.
-*       add beacon mode
+*       show ref power in all tx modes
 *       try a different Si5351 library (or write code to turn on/off indiv Si ports)
-*       put WSPR power variable at beginning of code, not WSPR routine
+*    
 */
             
 /* Subroutines:
@@ -104,6 +104,7 @@
 *
 * UPDATES:
 *
+*  1/02/2019 Update comments (documentation changes)
 *  1/01/2019 Changed encoder sw press to scq button. scq short - beacon/cq. Long/scan
 * 12/31/2018 When in channel mode, encoder button press increments channel by 10
 * 12/31/2018 Put static values for cw code and wspr in PROGMEM
@@ -148,7 +149,7 @@
 #include <Adafruit_SI5351.h> // for clock osc
 #include <avr/pgmspace.h>    // probably not needed
 #include <avr/io.h>          // probably not needed
-#include <string.h>
+#include <string.h>          // probably not needed
 
 
 Adafruit_SI5351 clockgen = Adafruit_SI5351();  // you will need to install the Adafruit Si5351 libs
@@ -662,7 +663,7 @@ tx = 0 for RX, 1 for TX
   
   Wire.beginTransmission(0x20);  // set up communication with port expander
   Wire.write(0x09);              // select GPIO pins
-  Wire.write(radioReg);           // set band pins
+  Wire.write(radioReg);          // set band pins
   Wire.endTransmission();        // done
   
   return;
@@ -770,6 +771,7 @@ void menu() {
               while(digitalRead(vc) == LOW) continue;
               delay(DEBOUNCE);
               vfoChan = 2;  // re-enable knob for menu ops
+              FREQFLAG = 1; // to redraw menu choice
               break;
             }
           }
@@ -950,6 +952,7 @@ void menu() {
               }
               while (digitalRead(vc) == 0) continue;    // wait until vc is released
               vfoChan = 2;        // back to menu mode
+              FREQFLAG = 1; // to redraw menu choice
           }
       }
                  
@@ -1150,7 +1153,7 @@ void loop() {
    ByHi = EEPROM.read(CalLow);    // retrieve caloffset bytes
    ByLo = EEPROM.read(CalHi);
    CALOFFSET = word(ByHi,ByLo);
-   if ((CALOFFSET > 3000) || (CALOFFSET < -3000)) CALOFFSET = 0; // assume eeprom corruption
+   if ((CALOFFSET > 3000) || (CALOFFSET < -3000)) CALOFFSET = 0; // assume eeprom corruption or not set
    
    /* get sidetone from eeprom */
    ByLo = EEPROM.read(SidetoneLow);
@@ -1162,8 +1165,8 @@ void loop() {
    vfoChan = 0;      // start in vfo mode (vfoChan = 0)
    chan = 0;  
    Recall();         // read EEPROM from channel 0, set as vfo frequency/mode
-   if ((freq < MINFREQ) || (freq > MAXFREQ)) freq = MINFREQ; // in case eeprom is corrupted
-   if ((MODE < 0) || (MODE > MAXMODE)) MODE = 0; // in case eeprom is corrupted
+   if ((freq < MINFREQ) || (freq > MAXFREQ)) freq = MINFREQ; // in case eeprom is corrupted or not set
+   if ((MODE < 0) || (MODE > MAXMODE)) MODE = 0; // in case eeprom is corrupted or not set
    chan = 1;         // start at channel 1
    STEP = 10;        // init step size 10 hz
    updateFreq();     // initial display of frequency
@@ -1365,32 +1368,32 @@ void loop() {
      
     /* test mode/rit button */
     if (digitalRead(mr) == 0) {
-     delay(300);    // test for long/short press
+     delay(300);                    // test for long/short press
      if (digitalRead(mr) == 1) {    // short press - MODE function
-        if (rit) continue;       // don't change modes in rit mode  
-        MODE += 1;  // change to next mode 
+        if (rit) continue;          // don't change modes in rit mode  
+        MODE += 1;                  // change to next mode 
         if (MODE > MAXMODE-1) MODE = 0;      // cycle thru
-        updateMode();   // update LCD/radio registers 
-        updateOsc();    // switch rx offset based on mode
+        updateMode();               // update LCD/radio registers 
+        updateOsc();                // switch rx offset based on mode
         showTune();
         continue;
      }
      // Long press - enable split (RIT) (still pressed)
-     if (vfoChan == 1) {        // in chan mode do nothing
+     if (vfoChan == 1) {            // in chan mode do nothing
          while (digitalRead(mr) == 0) continue;
          delay(DEBOUNCE);
          continue;
      }
      rit = abs(rit-1);
      if (rit) {
-         ritFreq = freq;       // turn ON rit
+         ritFreq = freq;           // turn ON rit
          lcd1.setCursor(5,1);
          lcd1.print(F("RIT"));
-         STEP = 10;            // in rit, init step size as smallest step
+         STEP = 10;                // in rit, init step size as smallest step
          showTune();
      } else {
-         freq = ritFreq;      // turn OFF rit
-         updateFreq();        // restore rx freq
+         freq = ritFreq;          // turn OFF rit
+         updateFreq();            // restore rx freq
          updateBand();
          updateOsc();
          lcd1.setCursor(5,1);
@@ -1405,15 +1408,16 @@ void loop() {
     
     /* test scan/send cq button (scan - long press, send cq/wspr/beacon - short press)  */
     if (digitalRead(scq) == LOW) {
-        delay(300);            // test for short/long press
+        delay(300);                // test for short/long press
         if (digitalRead(scq) == HIGH) {                  // short press - beacon modes/cq mode
             if ((MODE == 2) || (MODE == 3)) sendCQ();    // CW mode, send CQ
-            if (MODE == 4) {                    // WSPR mode, transmit from the displayed freq
+            if (MODE == 4) {       // WSPR mode, transmit from the displayed freq
                 tempfreq = freq;
                 wspr(freq);  
                 freq = tempfreq;
             }
-            if (MODE == 5) beacon();           // Beacon mode
+            if (MODE == 5) beacon();  // Beacon mode
+            // ignore SSB modes
             updateFreq();
             updateBand();
             updateOsc();
@@ -1469,7 +1473,6 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   //int i;
   
   // EEPROM storage: frequency (4 bytes), mode (1 byte)
-  // format: 0=lsb, 1=usb, 2=cw-lower sideband, 3=cw-upper sideband, 4=Burst, 5=WSPR, 6=BEACON
   
   const float defaultFreq[100] PROGMEM = {
      7030000,  // ch 00, start freq/mode when turned on
@@ -1838,7 +1841,7 @@ int parity(unsigned long x) {  // returns 1 or 0, x is a BIG #
 
 void sendCQ() { // send a cq message 
     unsigned int i;
-    char cwstg[] = "CQ CQ CQ DE ";
+    char cwstg[] = "CQ CQ CQ DE ";    // If changed, use UPPER CASE
     for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]); // strlen
     for (i=0; i<strlen(call); i++) sendCw(call[i]);      // send call
     sendCw(' ');
@@ -1864,7 +1867,7 @@ void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until sc
     while (true) {
         txKey();
         for (i=0; i<16; i++) {    // send 16 1/2 second sequential transmissions
-            txKey();
+            txKey();              // (if we used 1 16 second delay, we can't abort)
             delay(500);
             if (digitalRead(scq) == LOW) {    // switch press ends beacon, resumes normal op
                 txDekey();
@@ -1875,12 +1878,12 @@ void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until sc
         }
         txDekey();
         delay(1000);     // 1 second between carrier and ID
-        cwstg = "DE ";
+        cwstg = "DE ";        // Use UPPER CASE
         for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send DE
         for (i=0; i<strlen(call); i++) sendCw(call[i]);      // send call
         sendCw(' ');                                         // space between call/grid
         for (i=0; i<4; i++) sendCw(EEPROM.read(gridAddr+i)); // send grid
-        cwstg = " BEACON";
+        cwstg = " BEACON";    // Use UPPER CASE
         for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send BEACON
         delay(1000);     // 1 second between ID and carrier
         continue;        // continue with 8 seconds carrier followed by ID
