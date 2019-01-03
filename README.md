@@ -15,7 +15,7 @@ Start WSPR transmission (in WSPR mode). Press again to abort.
 Start CW Beacon (in BECN mode). Press again to abort.
 No effect in LSB/USB.
 
-< Removed Rotary switch from starting wspr/beacon modes. Replaced with button 3 (scq switch)
+> Removed Rotary switch from starting wspr/beacon modes. Replaced with button 3 (scq switch)
 
 > Removed scan function from mode button. Has it's own button now (see above)
 
