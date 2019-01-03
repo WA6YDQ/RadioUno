@@ -15,7 +15,7 @@ Start WSPR transmission (in WSPR mode). Press again to abort.
 Start CW Beacon (in BECN mode). Press again to abort.
 No effect in LSB/USB.
 
-Removed Rotary switch from starting wspr/beacon modes. Replaced with button 3 (scq switch)
+< Removed Rotary switch from starting wspr/beacon modes. Replaced with button 3 (scq switch)
 
 > Removed scan function from mode button. Has it's own button now (see above)
 
@@ -23,7 +23,7 @@ Removed Rotary switch from starting wspr/beacon modes. Replaced with button 3 (s
 
 > Added CW Beacon. Press MODE until function says BECN. Press button 3 (scq) 
 
-A CW beacon will be sent in the following format: 
+> A CW beacon will be sent in the following format: 
 8 Seconds of carrier on the current frequency. Your callsign. Your grid square. The word
 'BEACON and then the sequence begins again. It will continue forever or until 
 you press button 3 for about 1/2 second. That stops the 
