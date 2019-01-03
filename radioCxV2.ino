@@ -104,6 +104,7 @@
 *
 * UPDATES:
 *
+*  1/03/2019 In setting grid square, start with current char under cursor
 *  1/02/2019 Change memory allocation in beacon()
 *  1/02/2019 Update comments (documentation changes)
 *  1/01/2019 Changed encoder sw press to scq button. scq short - beacon/cq. Long/scan
@@ -120,22 +121,23 @@
 
 /****************************/
 
-#define MINFREQ  2900000    // lowest operating frequency (hz)
+#define MINFREQ  2400000    // lowest operating frequency (hz)
 #define MAXFREQ 16100000    // highest operating frequency (hz)
 
 // EEPROM addresses 0-500 used for channel storage, 5 bytes/channel
-#define gridAddr 504        // eeprom storage for grid square (4 bytes)
-#define SidetoneLow 508     // sidetone/cw offset frequency storage (2 bytes)
+#define gridAddr 504        // eeprom storage for grid square (4 bytes) (504-507)
+#define SidetoneLow 508     // sidetone/cw offset frequency storage (2 bytes) (508-509)
 #define SidetoneHi  509
-#define CalLow 510          // EEPROM address for calibrate function
+#define CalLow 510          // EEPROM address for calibrate function (510-511)
 #define CalHi  511          // (2 bytes)
+
 
 #define DEBOUNCE 50         // debounce make/break switches
 
 /****************************/
 
 #define CALLSIGN "D0MMY"    // Your call sign for wspr, cw, beacon. Change before use! Use UPPER CASE.
-// grid square is set from menu and stored in eeprom
+                            // grid square is set from menu and stored in eeprom
 #define RFPOWER 13          // rf power used in wspr (values: 0,3,7,10,13,17,30,23,27,30,33,37,40,43)
 
 /****************************/
@@ -227,7 +229,14 @@ const byte sync[] PROGMEM  = {
     0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0
 };
 
-/* set up hardware ports etc */ 
+
+
+
+
+/*****************************/
+/* set up hardware ports etc */
+/*****************************/
+
 void setup() {
   
    /* init LCD displays */
@@ -278,9 +287,9 @@ void setup() {
  
  
  
-/***********************/ 
-/***** SUBROUTINES *****/
-/***********************/
+            /***********************/ 
+            /***** SUBROUTINES *****/
+            /***********************/
  
  
  
@@ -557,7 +566,7 @@ void updateOsc() {
    rxFreq += CALOFFSET;
    
    /* When rxFreq > MAXFREQ set rxFreq to 1 mhz. (Keep si5351 happy) */
-   if (rxFreq > MAXFREQ) rxFreq = 1000000;    // channels can contain freq above MAXFREQ (6M beacon)
+   if (rxFreq > MAXFREQ) rxFreq = 1000000;    // channels can contain freq above MAXFREQ (ie. 6M beacon)
    
    rxFreq *= 4.0;      // using a tayloe detector, rx freq is 4X display freq
    VALUE = rxFreq/VB;
@@ -897,13 +906,12 @@ void menu() {
               while (digitalRead(vc) == LOW) continue;
               delay(DEBOUNCE);
               lcd1.setCursor(0,1);        // 2nd row, char pos 0
-              lcd1.print(gs);
+              lcd1.print(gs);             // show current grid square from eeprom
               charPos = 0;
-              charValue = 0;
               lcd1.setCursor(charPos,1);
-              charValue = 9;              // initial char is a letter
-              lcd1.cursor();              // show cursor position
-              while (true) {              // set grid, read VFO/CHAN, knob, knobsw to change values
+              charValue = gs[0] - 'A' + 10; // set char under cursor, offset by numbers
+              lcd1.cursor();                // show cursor position
+              while (true) {                // set grid, read VFO/CHAN, knob, knobsw to change values
                   if (digitalRead(vc) == 0) {    // save grid, exit routine
                       for (i=0; i<4; i++)        // save grid to eeprom
                           EEPROM.write(gridAddr+i,gs[i]);
@@ -919,8 +927,8 @@ void menu() {
                   if (digitalRead(knobsw) == 0) {    // step to next char position
                       charPos++;
                       if (charPos == 4) charPos = 0;
-                      if (charPos < 2) charValue = 9;   // pos 0,1 alpha
-                      if (charPos > 1) charValue = 0;   // pos 2,3 numeric
+                      if (charPos < 2) charValue = gs[charPos] - 'A' + 10; // set char under cursor, pos 0,1 alpha
+                      if (charPos > 1) charValue = gs[charPos] - '0';      // set char under cursor;   // pos 2,3 numeric
                       //charValue = 0;
                       lcd1.setCursor(charPos,1);
                       lcd1.cursor();        // show current position
@@ -1059,8 +1067,7 @@ void txDekey() {   // unkey TX, set power on for osc 0 and 2
   
   lcd1.setCursor(15,0);
   lcd1.write("R");  // show rx mode
-  
-  return;
+  return;    // note that we don't set rx freq here. That's done elsewhere.
 }
 
 
@@ -1073,6 +1080,7 @@ void txDekey() {   // unkey TX, set power on for osc 0 and 2
 void scan() {  // in scan mode, scan 100 kc in 200hz steps. restart at end. pressing the scq 
                // switch stops and returns to the main loop. You can be in vfo or channel mode.
                // does not stop on activity, just useful to check activity.
+               // Pressing and holding vc during scan pauses while held.
     extern float freq;
     float tempfreq;
     int freqMSB;
@@ -1135,9 +1143,9 @@ void loop() {
  * to MENU mode to calibrate the oscillator & change settings 
  * that don't normally get accessed.
 */
-   if (digitalRead(vc) == 0) {
-     delay(100);    // debounce
-     if (digitalRead(vc) == 0) {
+   if (digitalRead(vc) == LOW) {
+     delay(DEBOUNCE);    // debounce
+     if (digitalRead(vc) == LOW) {
        menu();
      }
    }
@@ -1475,7 +1483,13 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   
   // EEPROM storage: frequency (4 bytes), mode (1 byte)
   
-  const float defaultFreq[100] PROGMEM = {
+  // I'd use PROGMEM here but it doesn't work inside functions
+  // and I don't want all this cluttering up the beginning
+  
+  /* NOTE: Channels can contain frequencies above/below MINFREQ/MAXFREQ. */
+  /* (You just won't be able to tune them if recalled to VFO) (see operation.txt) */
+  
+  const float defaultFreq[100] = {
      7030000,  // ch 00, start freq/mode when turned on
      3525000,  // 80M cw ch 1
      7035000,  // 40M cw ch 2
@@ -1591,7 +1605,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   /* set the mode for the memory channels */
   // 0=lsb, 1=usb, 2=cw-upper sideband, 3=cw-lower sideband, 4=WSPR, 5=Beacon
   
-    byte defaultMode[100] PROGMEM = {
+    byte defaultMode[100] = {
     3,3,3,3,3,          // ch 00 - 04 
     0,0,1,4,4,4,4,      // ch 05 - 11
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 12 - 25
@@ -1862,7 +1876,8 @@ void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until sc
     
     unsigned int i; // strlen returns unsigned int
     int oldVfoChan;    
-    char cwstg[12] = "       ";
+    char cwstg1[] = "DE ";    // UPPER CASE for both
+    char cwstg2[] = " BEACON";
     oldVfoChan = vfoChan;    // save existing
     vfoChan = 3;             // ignore knob rotation 
     while (true) {
@@ -1879,13 +1894,11 @@ void beacon() {    // send 8 seconds of carrier followed by CW ID. Runs until sc
         }
         txDekey();
         delay(1000);          // 1 second between carrier and ID
-        strcpy(cwstg,"DE ");
-        for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send DE
-        for (i=0; i<strlen(call); i++) sendCw(call[i]);      // send call
-        sendCw(' ');          // space between call/grid
-        for (i=0; i<4; i++) sendCw(EEPROM.read(gridAddr+i)); // send grid
-        strcpy(cwstg," BEACON");
-        for (i=0; i<strlen(cwstg); i++) sendCw(cwstg[i]);    // send BEACON
+        for (i=0; i<strlen(cwstg1); i++) sendCw(cwstg1[i]);      // send DE
+        for (i=0; i<strlen(call); i++) sendCw(call[i]);          // send call
+        sendCw(' ');                                             // space between call/grid
+        for (i=0; i<4; i++) sendCw(EEPROM.read(gridAddr+i));     // send grid
+        for (i=0; i<strlen(cwstg2); i++) sendCw(cwstg2[i]);      // send BEACON
         delay(1000);         // 1 second between ID and carrier
         continue;            // continue with 8 seconds carrier followed by ID
     }
