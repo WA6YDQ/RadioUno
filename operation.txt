@@ -84,7 +84,7 @@ resistor that connects to DC power. The resistor needs to be set so that
 A0 reads 2.5 volts with +12.5 volts at the top of the resistor.
 
 *** MAKE SURE THE A0 LINE NEVER SEES MORE THAN 5VDC.***
-
+    (Or 3.3VDC if using a 3 volt arduino. I use a 5 VDC unit).
 ---
 
 *** When Programming the Arduino Controller ***
@@ -209,7 +209,7 @@ and mode are stored. A short press while in CHANNEL mode will restore the
 saved frequency and mode and jump back to VFO mode.
 
 In CHANNEL mode rotating the rotary encoder clockwise will increase the 
-channel number by 1 until channel 99. Then further clockwide rotation will 
+channel number by 1 until channel 99. Then further clockwise rotation will 
 go back to channel 00. Rotating the rotary encoder in CHANNEL mode counter-
 clockwise will decrease the channel number by 1 until channel 00. Further 
 rotation past 00 will go to channel 99.
@@ -271,6 +271,13 @@ to reflected power during transmit. The greater number of bars the greater the
 reflected power. Note that this is a relative reading only.
 
 -- Setting Default Channels --
+
+Below the main code is a list of 100 channels and modes. These are used as default channels
+when initializing the controller. These are overwritten when you store a channel in 
+memory. These frequencies can be below MINFREQ (set in #defines) and above MAXFREQ.
+This makes it useful for beacons where transmitting is all that matters. For this reason, 
+if the channel frequency is greater than MAXFREQ, the receive oscillator is set to
+1 mhz.
 
 Pressing and holding the VFO/CHANNEL button during power on will enter the MENU mode.
 Rotating the knob to 'set default chan'. Press the VFO/MEM button. You will see
