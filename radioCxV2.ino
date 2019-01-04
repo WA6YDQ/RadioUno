@@ -4,13 +4,35 @@
 * Multi-mode radio controller and synthesizer using an Arduino Uno
 * and si5351 oscillator. Also used is an MCP23008 I/O expander
 * for RF filter and hardware control of modules.
+* (C) 2018,2019 Kurt Theis
+*
+*   This program is free software: you can redistribute it and/or modify
+*    it under the terms of the GNU General Public License as published by
+*    the Free Software Foundation, either version 3 of the License, or
+*    (at your option) any later version.
+*
+*    This program is distributed in the hope that it will be useful,
+*    but WITHOUT ANY WARRANTY; without even the implied warranty of
+*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+*    GNU General Public License for more details.
+*
+*    You should have received a copy of the GNU General Public License
+*    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 *
 *
-*  This code is GPL-3.0 There is no warranty, implied or otherwise
-*  that this code will work. It may not. It might destroy society
-*  as we know it. It does, however, work for me.
+* THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+* APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
+* HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
+* OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
+* THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+* PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
+* IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
+* ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
 *
-* k theis <theis.kurt@gmail.com> 11/2018
+* 
+* Please see the LICENCE file in the archive for more information. 
+*
+* k theis <theis.kurt@gmail.com> Initial Upload 11/2018
 *
 * Ver2 - has 16x2 LCD, a mode/RIT button, a channel/vfo store/recall
 * button, a rotary (mechanical) encoder with a button. The button steps
@@ -104,6 +126,7 @@
 *
 * UPDATES:
 *
+*  1/04/2019 Minor doc changes, added extensive licence info 
 *  1/03/2019 In setting grid square, start with current char under cursor
 *  1/02/2019 Change memory allocation in beacon()
 *  1/02/2019 Update comments (documentation changes)
@@ -1064,7 +1087,7 @@ void txDekey() {   // unkey TX, set power on for osc 0 and 2
   VA = (long)((VALUE - VINT) * VB);
   clockgen.setupMultisynth(0, SI5351_PLL_A, VINT, VA, VB); // output on osc 0
   clockgen.setupMultisynth(2, SI5351_PLL_A, VINT, VA, VB); // output on osc 2
-  
+  delay(DEBOUNCE);    // sometimes the 'r' doesn't come back - unknown why
   lcd1.setCursor(15,0);
   lcd1.write("R");  // show rx mode
   return;    // note that we don't set rx freq here. That's done elsewhere.
@@ -1196,7 +1219,7 @@ void loop() {
    while (1) {
      
      
-     /* test rotary encoder SWITCH - change step size based on long/short push, start special modes */
+     /* test rotary encoder SWITCH - change step size based on long/short push */
      if (digitalRead(knobsw) == LOW) {
 
         if (vfoChan == 1) {  // channel mode - increment channel number by 10. roll over at 100
@@ -1212,13 +1235,13 @@ void loop() {
           continue;
         }
         
-        delay(250);
+        delay(300);
         if (digitalRead(knobsw) == HIGH) {   // short press - tune 10hz, 100 hz, 1khz 
           if (STEP >= 10000) {               // at 10khz go back to 10 hz
             STEP = 10;
           } else {
              STEP *= 10;
-             if (STEP >= 10000)
+             if (STEP > 1000)
                STEP = 10;
           }  // cycle between 10, 100, 1000 hz tune rates
           showTune();
@@ -1425,7 +1448,7 @@ void loop() {
                 wspr(freq);  
                 freq = tempfreq;
             }
-            if (MODE == 5) beacon();  // Beacon mode
+            if (MODE == 5) beacon();  // Beacon mode, transmit from the displayed freq
             // ignore SSB modes
             updateFreq();
             updateBand();
@@ -1630,7 +1653,7 @@ void setDefault() {  /* initialize the EEPROM with default frequencies */
   }
   
 
-  // save init value (0) for vfo offset (you need to set correct value from menu)
+  // set CALOFFSET to 0  (you need to set correct value from menu)
   EEPROM.write(CalLow, lowByte((int)0));
   EEPROM.write(CalHi, highByte((int)0));
   
