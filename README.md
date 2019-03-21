@@ -1,46 +1,5 @@
 # RadioUno
 
-## Changes on 12/31/2018:
-
-> When in CHANNEL mode, pressing the switch on the rotary encoder increments 
-the channel number by 10. Rolls over at 100 back to 1.
-
-> Removed 2nd TX Key line. Replaced it with a 3rd button.
-
-> This button has 2 functions: 
-Long Press: start scan. 
-
-> Short Press: Send CQ message using your call sign (entered in source code). (in CW mode)
-Start WSPR transmission (in WSPR mode). Press again to abort.
-Start CW Beacon (in BECN mode). Press again to abort.
-No effect in LSB/USB.
-
-> Removed Rotary switch from starting wspr/beacon modes. Replaced with button 3 (scq switch)
-
-> Removed scan function from mode button. Has it's own button now (see above)
-
-> Added CQ Send routine. Short press on button 3 sends a 3x2 CQ message on the current frequency
-
-> Added CW Beacon. Press MODE until function says BECN. Press button 3 (scq) 
-
-> A CW beacon will be sent in the following format: 
-8 Seconds of carrier on the current frequency. Your callsign. Your grid square. The word
-'BEACON and then the sequence begins again. It will continue forever or until 
-you press button 3 for about 1/2 second. That stops the 
-beacon and returns you to normal operation.
-
-> Moved most of the constants to flash memory and wrote routines to read them.
-Saved a LOT of grief with RAM space running low.
-
-------------------------------------------------------------------
-
-
-The .jpg file is the schematic of the controller as-built. This is my running 
-version. It selects CW, USB/LSB (receive - I use DSB for transmit) and WSPR. 
-The code is heavely documented. If you have any experience programming, you 
-should have no trouble making changes to suit your setup, or just use the code as-is.
-
-------------------------------------------------------------------
 
 # This is an HF radio controller. 
 It has the receive and transmit oscillators
@@ -92,7 +51,10 @@ TODO:
 >SWR display only active in CW/SSB transmit, not yet in WSPR/BECN or send CQ.
 
 
-
+The .jpg file is the schematic of the controller as-built. This is my running 
+version. It selects CW, USB/LSB (receive - I use DSB for transmit) and WSPR. 
+The code is heavely documented. If you have any experience programming, you 
+should have no trouble making changes to suit your setup, or just use the code as-is.
 
 
 
