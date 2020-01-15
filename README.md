@@ -9,10 +9,10 @@ ATmega328 processor. The display is a (very pretty) blue/white 16x2 LCD. Any
 16x2 LCD display will work or you can change to a different size. Just change
 the row/column numbers if you use a different size.
 
-All the usual radio features are there. VFO from (settable by you) 2.9 MHz thru
-15.2 MHz (changeable in #defines at the start of code), 100 memory channels, 
+All the usual radio features are there. VFO from (settable by you) 100khz thru
+30 MHz (changeable in #defines at the start of code), 100 memory channels, 
 an SWR indicator during transmit, DC voltage display on the 2x16 char LCD, different 
-modes controlling lines on the MCP23008. Tone out (during CW) with adjustable tone 
+modes controlling lines on the MCP23008. Sidetone out (during CW) with adjustable tone 
 frequency (also sets CW offset in receive). Calibrate function (in menu) to set the
 master oscillator frequency +/- 1 hz.
 
