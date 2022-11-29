@@ -2,6 +2,11 @@
 
 
 # This is an HF radio controller. 
+
+(Please note that while this is valid code, the radionano repository is the latest 
+version of arduio based radio software (that is non-sdr). Please have a look at it.)
+
+
 It has the receive and transmit oscillators
 using an Si5351 programmable clock oscillator, an MCP23008 port expander as a 
 band register used to control the low pass filters, and using an Arduino 
